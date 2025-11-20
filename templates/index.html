@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row mb-4">
+  <div class="col-md-4">
+    <div class="card text-bg-primary">
+      <div class="card-body">
+        <h5 class="card-title">Clientes cadastrados</h5>
+        <p class="display-6">{{ total_clients }}</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card text-bg-warning">
+      <div class="card-body">
+        <h5 class="card-title">Orçamentos em aberto</h5>
+        <p class="display-6">{{ total_open_budgets }}</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card text-bg-success">
+      <div class="card-body">
+        <h5 class="card-title">Saldo do mês</h5>
+        <p class="display-6">R$ {{ '%.2f'|format(saldo) }}</p>
+        <small>Entradas: R$ {{ '%.2f'|format(total_entradas) }} | Saídas: R$ {{ '%.2f'|format(total_saidas) }}</small>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="col-md-6">
+    <div class="card mb-3">
+      <div class="card-body">
+        <h5 class="card-title">Ações rápidas</h5>
+        <div class="d-grid gap-2">
+          <a href="{{ url_for('clientes') }}" class="btn btn-outline-primary">Cadastro de clientes</a>
+          <a href="{{ url_for('novo_orcamento') }}" class="btn btn-outline-success">Criar novo orçamento</a>
+          <a href="{{ url_for('listar_orcamentos') }}" class="btn btn-outline-warning">Orçamentos em aberto</a>
+          <a href="{{ url_for('financeiro') }}" class="btn btn-outline-info">Controle financeiro</a>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-body">
+        <h5 class="card-title">Como usar</h5>
+        <p>Utilize o menu para navegar entre o cadastro de clientes, geração de orçamentos e controle financeiro.</p>
+        <p>Os arquivos Excel ficam na raiz do projeto e podem ser editados manualmente caso necessário.</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

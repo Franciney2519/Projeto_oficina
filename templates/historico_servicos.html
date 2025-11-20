@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3>Histórico de Serviços por Cliente</h3>
+  <a href="{{ url_for('clientes') }}" class="btn btn-outline-secondary btn-sm">Voltar para clientes</a>
+</div>
+
+<div class="card mb-3">
+  <div class="card-body">
+    <form method="get" class="row g-3 align-items-end">
+      <div class="col-md-6 col-lg-4">
+        <label class="form-label">Cliente</label>
+        <select name="cliente" class="form-select">
+          <option value="">Todos</option>
+          {% for cliente in clients %}
+            <option value="{{ cliente.id_cliente }}" {% if cliente.id_cliente == selected_client_id %}selected{% endif %}>
+              {{ cliente.nome }} (ID {{ cliente.id_cliente }})
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3 col-lg-2">
+        <button type="submit" class="btn btn-primary w-100">Filtrar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body">
+    <div class="table-responsive">
+      <table class="table table-striped">
+        <thead>
+          <tr>
+            <th>ID Cliente</th>
+            <th>Cliente</th>
+            <th>Nº Orçamento</th>
+            <th>Data do Serviço</th>
+            <th>Tipo de Serviço</th>
+            <th>Valor</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for servico in services %}
+            <tr>
+              <td>{{ servico.client_id }}</td>
+              <td>{{ servico.client_name }}</td>
+              <td>{{ servico.budget_id or '-' }}</td>
+              <td>{{ servico.service_date }}</td>
+              <td>{{ servico.service_type }}</td>
+              <td>R$ {{ '%.2f'|format(servico.service_value or 0) }}</td>
+              <td>
+                <span class="badge bg-{{ 'success' if servico.status and servico.status|lower == 'finalizado' else 'secondary' }}">
+                  {{ servico.status }}
+                </span>
+              </td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="7" class="text-center">Nenhum serviço encontrado para o filtro selecionado.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

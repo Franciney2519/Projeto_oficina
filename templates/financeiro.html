@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+  <div class="col-lg-8">
+    <div class="card mb-3">
+      <div class="card-body">
+        <h5 class="card-title">Lançamentos financeiros</h5>
+        <form method="get" class="row g-3 mb-3">
+          <div class="col-md-3">
+            <label class="form-label">Data inicial</label>
+            <input type="date" name="data_inicio" value="{{ data_inicio }}" class="form-control">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Data final</label>
+            <input type="date" name="data_fim" value="{{ data_fim }}" class="form-control">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Tipo</label>
+            <select name="tipo" class="form-select">
+              <option value="">Todos</option>
+              <option value="Entrada" {% if tipo == 'Entrada' %}selected{% endif %}>Entrada</option>
+              <option value="Saída" {% if tipo == 'Saída' %}selected{% endif %}>Saída</option>
+            </select>
+          </div>
+          <div class="col-md-3 d-flex align-items-end">
+            <button type="submit" class="btn btn-primary w-100">Filtrar</button>
+          </div>
+        </form>
+
+        <div class="table-responsive">
+          <table class="table table-striped">
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Tipo</th>
+                <th>Categoria</th>
+                <th>Descrição</th>
+                <th>Valor</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for entry in entries %}
+                <tr>
+                  <td>{{ entry.data_formatada }}</td>
+                  <td>{{ entry.tipo_lancamento }}</td>
+                  <td>{{ entry.categoria }}</td>
+                  <td>{{ entry.descricao }}</td>
+                  <td>R$ {{ '%.2f'|format(entry.valor or 0) }}</td>
+                </tr>
+              {% else %}
+                <tr>
+                  <td colspan="5" class="text-center">Nenhum lançamento encontrado.</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="alert alert-secondary">
+          <strong>Entradas:</strong> R$ {{ '%.2f'|format(total_entradas) }} |
+          <strong>Saídas:</strong> R$ {{ '%.2f'|format(total_saidas) }} |
+          <strong>Saldo:</strong> R$ {{ '%.2f'|format(saldo) }}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-4">
+    <div class="card">
+      <div class="card-body">
+        <h5 class="card-title">Registrar despesa</h5>
+        <form method="post">
+          <div class="mb-3">
+            <label class="form-label">Data</label>
+            <input type="date" name="data_saida" class="form-control" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Tipo de despesa</label>
+            <select name="tipo_despesa" id="tipoDespesa" class="form-select" required>
+              <option value="">Selecione</option>
+              {% for tipo in expense_types %}
+                <option value="{{ tipo }}">{{ tipo }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Categoria</label>
+            <select name="categoria" id="categoriaDespesa" class="form-select" disabled required>
+              <option value="">Selecione o tipo primeiro</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Descrição</label>
+            <input type="text" name="descricao" class="form-control" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Valor</label>
+            <input type="number" step="0.01" name="valor" class="form-control" required>
+          </div>
+          <button type="submit" class="btn btn-danger w-100">Salvar despesa</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  const expenseTypes = {{ expense_types|tojson }};
+  const tipoSelect = document.getElementById('tipoDespesa');
+  const categoriaSelect = document.getElementById('categoriaDespesa');
+
+  function atualizarCategorias() {
+    const tipo = tipoSelect.value;
+    categoriaSelect.innerHTML = '';
+    if (!tipo || !expenseTypes[tipo]) {
+      categoriaSelect.disabled = true;
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = 'Selecione o tipo primeiro';
+      categoriaSelect.appendChild(opt);
+      return;
+    }
+    categoriaSelect.disabled = false;
+    expenseTypes[tipo].forEach(cat => {
+      const opt = document.createElement('option');
+      opt.value = cat;
+      opt.textContent = cat;
+      categoriaSelect.appendChild(opt);
+    });
+  }
+
+  if (tipoSelect) {
+    tipoSelect.addEventListener('change', atualizarCategorias);
+  }
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+  <div class="col-lg-8">
+    <div class="card mb-4">
+      <div class="card-body">
+        <h5 class="card-title">Clientes cadastrados</h5>
+        <div class="table-responsive">
+          <table class="table table-striped">
+            <thead>
+              <tr>
+                <th>Nome</th>
+                <th>WhatsApp</th>
+                <th>Veículo</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for cliente in clients %}
+                <tr>
+                  <td>{{ cliente.nome }}</td>
+                  <td>{{ cliente.telefone_whatsapp }}</td>
+                  <td>{{ cliente.carro_marca }} {{ cliente.carro_modelo }} {{ cliente.carro_ano }} - {{ cliente.carro_placa }}</td>
+                  <td>
+                    <a href="{{ url_for('editar_cliente', client_id=cliente.id_cliente) }}" class="btn btn-sm btn-primary">Editar</a>
+                    <a href="{{ url_for('historico_cliente', client_id=cliente.id_cliente) }}" class="btn btn-sm btn-secondary">Histórico</a>
+                  </td>
+                </tr>
+              {% else %}
+                <tr>
+                  <td colspan="4" class="text-center">Nenhum cliente cadastrado.</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-4">
+    <div class="card">
+      <div class="card-body">
+        <h5 class="card-title">Novo cliente</h5>
+        <form method="post">
+          {% for field in [
+            ('nome', 'Nome completo'),
+            ('telefone_whatsapp', 'Telefone/WhatsApp'),
+            ('email', 'Email'),
+            ('endereco_rua', 'Rua'),
+            ('endereco_numero', 'Número'),
+            ('endereco_bairro', 'Bairro'),
+            ('endereco_cidade', 'Cidade'),
+            ('endereco_uf', 'UF'),
+            ('endereco_cep', 'CEP'),
+            ('carro_marca', 'Marca do carro'),
+            ('carro_modelo', 'Modelo'),
+            ('carro_ano', 'Ano'),
+            ('carro_placa', 'Placa'),
+            ('observacoes', 'Observações')
+          ] %}
+            <div class="mb-3">
+              {% if field[0] == 'observacoes' %}
+                <label class="form-label">{{ field[1] }}</label>
+                <textarea name="{{ field[0] }}" class="form-control" rows="2"></textarea>
+              {% else %}
+                <label class="form-label">{{ field[1] }}</label>
+                <input type="text" name="{{ field[0] }}" class="form-control">
+              {% endif %}
+            </div>
+          {% endfor %}
+          <button type="submit" class="btn btn-success w-100">Cadastrar</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

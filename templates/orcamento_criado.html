@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+  <div class="card-body">
+    <h5 class="card-title">Orçamento #{{ orcamento_id }} criado para {{ client.nome }}</h5>
+    <p>Copie o texto abaixo e envie para o cliente via WhatsApp.</p>
+    <textarea class="form-control" rows="10">{{ texto_whatsapp }}</textarea>
+
+    <h6 class="mt-4">Resumo</h6>
+    <p><strong>Forma de pagamento:</strong> {{ forma_pagamento }}</p>
+    <p><strong>Valor dos itens:</strong> R$ {{ '%.2f'|format(base_total) }}</p>
+    {% if taxa > 0 %}
+      <p><strong>Taxa cartão (3%):</strong> R$ {{ '%.2f'|format(taxa) }}</p>
+    {% endif %}
+    <p><strong>Valor final para o cliente:</strong> R$ {{ '%.2f'|format(total) }}</p>
+    <ul>
+      {% for item in items %}
+        <li>{{ item.descricao }} - {{ item.quantidade }}x R$ {{ '%.2f'|format(item.valor_unitario) }} = R$ {{ '%.2f'|format(item.subtotal) }}</li>
+      {% endfor %}
+    </ul>
+
+    <div class="mt-3">
+      <a href="{{ url_for('novo_orcamento') }}" class="btn btn-outline-primary">Criar outro</a>
+      <a href="{{ url_for('gerar_pdf_orcamento', budget_id=orcamento_id) }}" class="btn btn-outline-secondary">Baixar PDF</a>
+      <a href="https://wa.me/?text={{ texto_whatsapp|urlencode }}" target="_blank" class="btn btn-success">Enviar via WhatsApp</a>
+      <a href="{{ url_for('listar_orcamentos') }}" class="btn btn-success">Ver todos os orçamentos</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

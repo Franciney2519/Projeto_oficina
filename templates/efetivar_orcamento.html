@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+  <div class="col-lg-8">
+    <div class="card mb-3">
+      <div class="card-body">
+        <h5 class="card-title">Efetivar orçamento #{{ budget.id_orcamento }}</h5>
+        <p><strong>Cliente:</strong> {{ client.nome }}</p>
+        <p><strong>Valor base do orçamento:</strong> R$ {{ '%.2f'|format(base_total) }}</p>
+        <p><strong>Total com forma de pagamento:</strong> <span id="valorFinalDisplay"></span></p>
+        <h6>Itens</h6>
+        <ul>
+          {% for item in items %}
+            <li>{{ item.descricao }} - R$ {{ '%.2f'|format(item.subtotal) }}</li>
+          {% endfor %}
+        </ul>
+
+        <form method="post">
+          <div class="mb-3">
+            <label class="form-label">Forma de pagamento</label>
+            <select name="forma_pagamento" class="form-select" required>
+              <option value="">Selecione</option>
+              {% for option in payment_options %}
+                <option value="{{ option }}">{{ option }}</option>
+              {% endfor %}
+            </select>
+            <small class="text-muted">Pagamentos no cartão de crédito incluem taxa de 3% da máquina.</small>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Data de pagamento / conclusão</label>
+            <input type="date" name="data_conclusao" class="form-control" value="{{ date|default('', true) }}">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Status final</label>
+            <select name="status_final" class="form-select">
+              <option value="Concluído" selected>Concluído</option>
+              <option value="Aprovado">Aprovado (aguardando execução)</option>
+            </select>
+          </div>
+          <button type="submit" class="btn btn-success">Confirmar efetivação</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  const baseTotal = {{ (base_total | default(0)) | float }};
+  const selectForma = document.querySelector('select[name="forma_pagamento"]');
+  const display = document.getElementById('valorFinalDisplay');
+
+  function formatValue(value) {
+    return 'R$ ' + value.toFixed(2);
+  }
+
+  function atualizarTotal() {
+    let total = baseTotal;
+    if (selectForma.value === 'Cartão Crédito') {
+      total = +(baseTotal * 1.03).toFixed(2);
+    }
+    display.textContent = formatValue(total);
+  }
+
+  if (selectForma) {
+    selectForma.addEventListener('change', atualizarTotal);
+    atualizarTotal();
+  }
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+  <div class="col-lg-8">
+    <div class="card mb-3">
+      <div class="card-body">
+        <h5 class="card-title">Criar novo orçamento</h5>
+        <form method="post" id="formOrcamento">
+          <div class="mb-3">
+            <label class="form-label">Cliente</label>
+            <select name="id_cliente" class="form-select" required>
+              <option value="">Selecione</option>
+              {% for cliente in clients %}
+                <option value="{{ cliente.id_cliente }}">{{ cliente.nome }} - {{ cliente.carro_marca }} {{ cliente.carro_modelo }} ({{ cliente.carro_placa }})</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Forma de pagamento</label>
+            <select name="forma_pagamento" id="formaPagamento" class="form-select" required>
+              {% for option in payment_options %}
+                <option value="{{ option }}">{{ option }}</option>
+              {% endfor %}
+            </select>
+            <small class="text-muted">Cartão de crédito aplica taxa adicional de 3%.</small>
+          </div>
+
+          <h6>Itens do orçamento</h6>
+          <table class="table" id="tabelaItens">
+            <thead>
+              <tr>
+                <th>Descrição</th>
+                <th>Tipo</th>
+                <th>Qtd</th>
+                <th>Valor unit.</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+          <button type="button" class="btn btn-outline-secondary mb-3" id="btnAdicionarItem">Adicionar item</button>
+
+          <div class="row">
+            <div class="col-md-6">
+              <div class="mb-3">
+                <label class="form-label">Valor total dos itens</label>
+                <input type="text" id="valorTotalBase" class="form-control" readonly>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="mb-3">
+                <label class="form-label">Valor com forma de pagamento</label>
+                <input type="text" id="valorTotalFinal" class="form-control" readonly>
+              </div>
+            </div>
+          </div>
+
+          <div class="d-flex justify-content-between">
+            <a href="{{ url_for('listar_orcamentos') }}" class="btn btn-outline-secondary">Voltar</a>
+            <button type="submit" class="btn btn-success">Salvar orçamento</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-4">
+    <div class="alert alert-info">
+      Preencha os itens utilizando quantidades e valores unitários. O sistema calcula automaticamente o total estimado e gera o texto para WhatsApp.
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const tabela = document.querySelector('#tabelaItens tbody');
+const btnAdicionar = document.getElementById('btnAdicionarItem');
+const valorTotalBase = document.getElementById('valorTotalBase');
+const valorTotalFinal = document.getElementById('valorTotalFinal');
+const formaPagamento = document.getElementById('formaPagamento');
+let totalAtual = 0;
+
+function atualizarTotal() {
+  let total = 0;
+  tabela.querySelectorAll('tr').forEach(row => {
+    const qtd = parseFloat(row.querySelector("input[name='item_quantidade[]']").value) || 0;
+    const valor = parseFloat(row.querySelector("input[name='item_valor[]']").value) || 0;
+    total += qtd * valor;
+  });
+  totalAtual = total;
+  atualizarResumo();
+}
+
+function atualizarResumo() {
+  valorTotalBase.value = 'R$ ' + totalAtual.toFixed(2);
+  let final = totalAtual;
+  if (formaPagamento.value === 'Cartão Crédito') {
+    final = +(totalAtual * 1.03).toFixed(2);
+  }
+  valorTotalFinal.value = 'R$ ' + final.toFixed(2);
+}
+
+function adicionarLinha() {
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td><input type="text" name="item_descricao[]" class="form-control" required></td>
+    <td>
+      <select name="item_tipo[]" class="form-select">
+        <option value="Produto">Produto</option>
+        <option value="Serviço">Serviço</option>
+        <option value="Outros">Outros</option>
+      </select>
+    </td>
+    <td><input type="number" step="0.01" name="item_quantidade[]" class="form-control" value="1"></td>
+    <td><input type="number" step="0.01" name="item_valor[]" class="form-control" value="0"></td>
+    <td><button type="button" class="btn btn-sm btn-danger">Remover</button></td>
+  `;
+  tr.querySelectorAll('input').forEach(input => input.addEventListener('input', atualizarTotal));
+  tr.querySelector('button').addEventListener('click', () => {
+    tr.remove();
+    atualizarTotal();
+  });
+  tabela.appendChild(tr);
+}
+
+btnAdicionar.addEventListener('click', adicionarLinha);
+formaPagamento.addEventListener('change', atualizarResumo);
+adicionarLinha();
+atualizarTotal();
+</script>
+{% endblock %}
