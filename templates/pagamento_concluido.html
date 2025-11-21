@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+  <div class="card-body">
+    <h5 class="card-title">Pagamento concluído - Orçamento #{{ budget_id }}</h5>
+    <p>Cliente: <strong>{{ client.nome }}</strong></p>
+    <p>Valor recebido: <strong>R$ {{ '%.2f'|format(valor_final) }}</strong></p>
+    <p>Data do pagamento: {{ data_pagamento.strftime('%d/%m/%Y') }}</p>
+
+    <h6 class="mt-3">Itens faturados</h6>
+    <ul>
+      {% for item in items %}
+        <li>{{ item.descricao }} - {{ item.quantidade }}x R$ {{ '%.2f'|format(item.valor_unitario) }} = R$ {{ '%.2f'|format(item.subtotal) }}</li>
+      {% endfor %}
+    </ul>
+
+    <div class="mt-3 d-flex flex-wrap gap-2">
+      <a href="{{ url_for('gerar_recibo', budget_id=budget_id) }}" class="btn btn-primary">Baixar comprovante</a>
+      <a href="https://wa.me/?text={{ texto_whatsapp|urlencode }}" target="_blank" class="btn btn-success">Enviar via WhatsApp</a>
+      <a href="{{ url_for('detalhes_orcamento', budget_id=budget_id) }}" class="btn btn-outline-secondary">Ver detalhes do orçamento</a>
+      <a href="{{ url_for('listar_orcamentos') }}" class="btn btn-outline-primary">Voltar para lista</a>
+    </div>
+
+    <div class="mt-4">
+      <label class="form-label">Mensagem para WhatsApp</label>
+      <textarea class="form-control" rows="5">{{ texto_whatsapp }}</textarea>
+    </div>
+  </div>
+</div>
+{% endblock %}

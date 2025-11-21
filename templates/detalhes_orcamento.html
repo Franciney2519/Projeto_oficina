@@ -9,6 +9,8 @@
         <p><strong>Status:</strong> {{ budget.status }}</p>
         <p><strong>Cliente:</strong> {{ client.nome }} - {{ client.telefone_whatsapp }}</p>
         <p><strong>Veículo:</strong> {{ client.carro_marca }} {{ client.carro_modelo }} {{ client.carro_ano }} ({{ client.carro_placa }})</p>
+        <p><strong>Cor / KM informados:</strong> {{ budget.carro_cor or 'N/D' }} / {{ budget.carro_km or 'N/D' }}</p>
+        <p><strong>Responsável planejado:</strong> {{ budget.responsavel_planejado_nome or 'N/D' }}</p>
         <p><strong>Forma de pagamento:</strong> {{ forma_pagamento }}{% if taxa > 0 %} (taxa R$ {{ '%.2f'|format(taxa) }}){% endif %}</p>
         <p><strong>Valor dos itens:</strong> R$ {{ '%.2f'|format(base_total) }}</p>
         <p><strong>Valor final apresentado ao cliente:</strong> R$ {{ '%.2f'|format(final_total) }}</p>
@@ -51,6 +53,11 @@
           <a href="{{ url_for('editar_orcamento', budget_id=budget.id_orcamento) }}" class="btn btn-outline-secondary w-100 mb-2">Editar</a>
         {% else %}
           <button class="btn btn-outline-secondary w-100 mb-2" disabled title="Orçamento concluído.">Editar</button>
+        {% endif %}
+        {% if can_recibo %}
+          <a href="{{ url_for('gerar_recibo', budget_id=budget.id_orcamento) }}" class="btn btn-outline-primary w-100 mb-2">Baixar comprovante</a>
+        {% else %}
+          <button class="btn btn-outline-primary w-100 mb-2" disabled title="Disponível após conclusão.">Baixar comprovante</button>
         {% endif %}
         <a href="{{ url_for('gerar_pdf_orcamento', budget_id=budget.id_orcamento) }}" class="btn btn-outline-primary w-100 mb-2">Baixar PDF</a>
         {% if can_reprovar %}

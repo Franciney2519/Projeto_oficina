@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+  <div class="col-lg-7">
+    <div class="card mb-3">
+      <div class="card-body">
+        <h5 class="card-title">Funcionários cadastrados</h5>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle">
+            <thead>
+              <tr>
+                <th>Nome</th>
+                <th>Telefone</th>
+                <th>Cargo</th>
+                <th>Status</th>
+                <th class="text-end">Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for f in employees %}
+                <tr>
+                  <td>{{ f.nome or 'Sem nome' }}</td>
+                  <td>{{ f.telefone }}</td>
+                  <td>{{ f.cargo }}</td>
+                  <td>
+                    {% set ativo = (f.ativo|string).lower() not in ['false','0','nao','não'] %}
+                    {% if ativo %}
+                      <span class="badge text-bg-success">Ativo</span>
+                    {% else %}
+                      <span class="badge text-bg-secondary">Inativo</span>
+                    {% endif %}
+                  </td>
+                  <td class="text-end">
+                    <form action="{{ url_for('toggle_funcionario', employee_id=f.id_funcionario) }}" method="post" class="d-inline">
+                      {% if ativo %}
+                        <button class="btn btn-sm btn-outline-secondary" type="submit">Inativar</button>
+                      {% else %}
+                        <button class="btn btn-sm btn-outline-success" type="submit">Reativar</button>
+                      {% endif %}
+                    </form>
+                  </td>
+                </tr>
+              {% endfor %}
+              {% if employees|length == 0 %}
+                <tr><td colspan="5" class="text-center text-muted">Nenhum funcionário cadastrado.</td></tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-body">
+        <h5 class="card-title">Novo funcionário</h5>
+        <form method="post">
+          <div class="mb-3">
+            <label class="form-label">Nome</label>
+            <input type="text" name="nome" class="form-control" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Telefone</label>
+            <input type="text" name="telefone" class="form-control" placeholder="(99) 99999-9999">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Cargo</label>
+            <input type="text" name="cargo" class="form-control" placeholder="Mecânico, Eletricista...">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Observações</label>
+            <textarea name="observacoes" class="form-control" rows="3"></textarea>
+          </div>
+          <button type="submit" class="btn btn-primary w-100">Salvar funcionário</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

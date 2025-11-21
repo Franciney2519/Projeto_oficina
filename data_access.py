@@ -27,7 +27,12 @@ logger.setLevel(logging.INFO)
 # Diretórios e arquivos baseados no diretório atual do projeto.
 # Quando empacotado com PyInstaller usamos o diretório do executável.
 if getattr(sys, "frozen", False):
-    BASE_DIR = os.path.dirname(sys.executable)
+    base_dir = os.path.dirname(sys.executable)
+    internal_dir = os.path.join(base_dir, "_internal")
+    if os.path.exists(os.path.join(internal_dir, "dados_clientes.xlsx")):
+        BASE_DIR = internal_dir
+    else:
+        BASE_DIR = base_dir
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_FILES = {
@@ -35,6 +40,7 @@ DATA_FILES = {
     "orcamentos": os.path.join(BASE_DIR, "dados_orcamentos.xlsx"),
     "servicos": os.path.join(BASE_DIR, "dados_servicos.xlsx"),
     "financeiro": os.path.join(BASE_DIR, "dados_financeiro.xlsx"),
+    "funcionarios": os.path.join(BASE_DIR, "dados_funcionarios.xlsx"),
 }
 
 # Definição de colunas para cada planilha.
@@ -60,6 +66,10 @@ ORCAMENTO_COLUMNS = [
     "id_cliente",
     "data_criacao",
     "status",
+    "carro_km",
+    "carro_cor",
+    "responsavel_planejado_id",
+    "responsavel_planejado_nome",
     "itens",
     "valor_total",
     "texto_whatsapp",
@@ -76,6 +86,7 @@ SERVICO_COLUMNS = [
     "tipo_servico",
     "valor",
     "observacoes",
+    "responsavel",
 ]
 FINANCEIRO_COLUMNS = [
     "id_lancamento",
@@ -86,6 +97,14 @@ FINANCEIRO_COLUMNS = [
     "valor",
     "relacionado_orcamento_id",
     "relacionado_servico_id",
+]
+FUNCIONARIOS_COLUMNS = [
+    "id_funcionario",
+    "nome",
+    "telefone",
+    "cargo",
+    "observacoes",
+    "ativo",
 ]
 
 
@@ -223,6 +242,41 @@ def add_financial_entry(data: Dict) -> int:
 
 
 # ---------------------------
+# Funções para funcionários
+# ---------------------------
+def get_all_employees() -> pd.DataFrame:
+    return _load_dataframe(DATA_FILES["funcionarios"], FUNCIONARIOS_COLUMNS)
+
+
+def get_employee_by_id(employee_id: int) -> Optional[Dict]:
+    df = get_all_employees()
+    filtered = df[df["id_funcionario"] == employee_id]
+    if filtered.empty:
+        return None
+    return filtered.iloc[0].to_dict()
+
+
+def add_employee(data: Dict) -> int:
+    df = get_all_employees()
+    new_id = _get_next_id(df, "id_funcionario")
+    data["id_funcionario"] = new_id
+    df = pd.concat([df, pd.DataFrame([data])], ignore_index=True)
+    _save_dataframe(DATA_FILES["funcionarios"], df)
+    return new_id
+
+
+def update_employee(employee_id: int, data: Dict) -> bool:
+    df = get_all_employees()
+    idx = df.index[df["id_funcionario"] == employee_id]
+    if len(idx) == 0:
+        return False
+    for key, value in data.items():
+        df.loc[idx, key] = value
+    _save_dataframe(DATA_FILES["funcionarios"], df)
+    return True
+
+
+# ---------------------------
 # Utilidades diversas
 # ---------------------------
 def get_data_files() -> Dict[str, str]:
@@ -236,6 +290,7 @@ def ensure_all_files_exist() -> None:
     _ensure_file(DATA_FILES["orcamentos"], ORCAMENTO_COLUMNS)
     _ensure_file(DATA_FILES["servicos"], SERVICO_COLUMNS)
     _ensure_file(DATA_FILES["financeiro"], FINANCEIRO_COLUMNS)
+    _ensure_file(DATA_FILES["funcionarios"], FUNCIONARIOS_COLUMNS)
 
 
 def parse_budget_items(items_json: str) -> List[Dict]:

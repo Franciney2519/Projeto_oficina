@@ -40,6 +40,7 @@ from flask import (
     request,
     url_for,
     send_file,
+    session,
 )
 
 from fpdf import FPDF
@@ -51,7 +52,19 @@ except ImportError:  # pillow is opcional; ícone será pulado se não estiver d
 
 import data_access as dal
 
-PROJECT_DIR = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+
+def _resolve_base_dir() -> str:
+    """Determina a raiz do bundle (suporta execução congelada/onedir do PyInstaller)."""
+    base_dir = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    internal_dir = os.path.join(base_dir, "_internal")
+    if not os.path.exists(os.path.join(base_dir, "templates")) and os.path.exists(
+        os.path.join(internal_dir, "templates")
+    ):
+        return internal_dir
+    return base_dir
+
+
+PROJECT_DIR = _resolve_base_dir()
 
 app = Flask(
     __name__,
@@ -143,6 +156,20 @@ FINANCE_EXPENSE_TYPES = {
         "Coleta de resíduos automotivos",
     ],
 }
+MONTH_NAMES = [
+    "Janeiro",
+    "Fevereiro",
+    "Março",
+    "Abril",
+    "Maio",
+    "Junho",
+    "Julho",
+    "Agosto",
+    "Setembro",
+    "Outubro",
+    "Novembro",
+    "Dezembro",
+]
 
 # Garante criação das planilhas quando o servidor inicia.
 dal.ensure_all_files_exist()
@@ -293,11 +320,34 @@ def _format_date(date_value) -> str:
         return str(date_value)
 
 
+@app.before_request
+def require_entry():
+    """Obrigar passar pela tela inicial antes de acessar o app."""
+    allowed = {"landing", "enter_app", "favicon", "static"}
+    if request.endpoint in allowed or (request.endpoint or "").startswith("static"):
+        return
+    if not session.get("has_entered"):
+        return redirect(url_for("landing"))
+
+
 @app.route("/")
+def landing():
+    session.pop("has_entered", None)
+    return render_template("landing.html")
+
+
+@app.route("/entrar", methods=["POST"])
+def enter_app():
+    session["has_entered"] = True
+    return redirect(url_for("dashboard"))
+
+
+@app.route("/dashboard")
 def dashboard():
     clients_df = dal.get_all_clients()
     budgets_df = dal.get_all_budgets()
     financial_df = dal.get_all_financial_entries()
+    services_df = dal.get_all_services()
 
     total_clients = len(clients_df)
     open_budgets = budgets_df[budgets_df["status"] != "Concluído"]
@@ -305,12 +355,63 @@ def dashboard():
 
     financial_df["data"] = pd.to_datetime(financial_df["data"], errors="coerce")
     today = datetime.today()
-    monthly = financial_df[
-        (financial_df["data"].dt.month == today.month)
-        & (financial_df["data"].dt.year == today.year)
+    selected_month = today.month
+    selected_year = today.year
+
+    try:
+        selected_month = int(request.args.get("mes", selected_month))
+    except (TypeError, ValueError):
+        selected_month = today.month
+    if selected_month < 1 or selected_month > 12:
+        selected_month = today.month
+
+    try:
+        selected_year = int(request.args.get("ano", selected_year))
+    except (TypeError, ValueError):
+        selected_year = today.year
+
+    filtered_financial = financial_df[
+        (financial_df["data"].dt.month == selected_month)
+        & (financial_df["data"].dt.year == selected_year)
     ]
-    entradas = monthly[monthly["tipo_lancamento"] == "Entrada"]["valor"].sum()
-    saidas = monthly[monthly["tipo_lancamento"] == "Saída"]["valor"].sum()
+    entradas = filtered_financial[filtered_financial["tipo_lancamento"] == "Entrada"]["valor"].sum()
+    saidas = filtered_financial[filtered_financial["tipo_lancamento"] == "Saída"]["valor"].sum()
+
+    available_years = set(financial_df["data"].dropna().dt.year.tolist()) if not financial_df.empty else set()
+    available_years.add(today.year)
+    year_options = sorted(available_years)
+
+    reference_date = datetime(selected_year, selected_month, 1)
+    months_range = pd.date_range(reference_date - pd.DateOffset(months=11), periods=12, freq="MS")
+    chart_labels: List[str] = []
+    chart_entradas: List[float] = []
+    chart_saidas: List[float] = []
+    chart_saldo: List[float] = []
+    for month_start in months_range:
+        mask = (financial_df["data"].dt.month == month_start.month) & (
+            financial_df["data"].dt.year == month_start.year
+        )
+        month_df = financial_df[mask]
+        entradas_mes = month_df[month_df["tipo_lancamento"] == "Entrada"]["valor"].sum()
+        saidas_mes = month_df[month_df["tipo_lancamento"] == "Saída"]["valor"].sum()
+        chart_labels.append(month_start.strftime("%b/%Y"))
+        chart_entradas.append(round(float(entradas_mes or 0), 2))
+        chart_saidas.append(round(float(saidas_mes or 0), 2))
+        chart_saldo.append(round(chart_entradas[-1] - chart_saidas[-1], 2))
+
+    selected_month_name = MONTH_NAMES[selected_month - 1]
+
+    # Resumo por responsável de execução
+    if "responsavel" not in services_df.columns:
+        services_df["responsavel"] = ""
+    services_df["valor"] = pd.to_numeric(services_df.get("valor"), errors="coerce").fillna(0)
+    resumo_execucao = (
+        services_df.groupby("responsavel")
+        .agg(qtd_servicos=("id_servico", "count"), total_receita=("valor", "sum"))
+        .reset_index()
+    )
+    resumo_execucao = resumo_execucao.sort_values("total_receita", ascending=False)
+    executores = resumo_execucao.to_dict(orient="records")
 
     return render_template(
         "index.html",
@@ -319,6 +420,16 @@ def dashboard():
         total_entradas=entradas,
         total_saidas=saidas,
         saldo=entradas - saidas,
+        selected_month=selected_month,
+        selected_year=selected_year,
+        month_options=list(enumerate(MONTH_NAMES, start=1)),
+        year_options=year_options,
+        selected_month_name=selected_month_name,
+        chart_labels=chart_labels,
+        chart_entradas=chart_entradas,
+        chart_saidas=chart_saidas,
+        chart_saldo=chart_saldo,
+        executores=executores,
     )
 
 
@@ -338,6 +449,7 @@ CLIENT_FIELDS = [
     "carro_placa",
     "observacoes",
 ]
+EMPLOYEE_FIELDS = ["nome", "telefone", "cargo", "observacoes"]
 
 
 @app.route("/clientes", methods=["GET", "POST"])
@@ -401,6 +513,37 @@ def historico_cliente(client_id: int):
         data_inicio=data_inicio,
         data_fim=data_fim,
     )
+
+
+@app.route("/funcionarios", methods=["GET", "POST"])
+def funcionarios():
+    if request.method == "POST":
+        nome = request.form.get("nome", "").strip()
+        if not nome:
+            flash("Informe o nome do funcionário.", "warning")
+            return redirect(url_for("funcionarios"))
+        payload = {field: request.form.get(field, "").strip() for field in EMPLOYEE_FIELDS}
+        payload["ativo"] = True
+        dal.add_employee(payload)
+        flash("Funcionário cadastrado com sucesso.", "success")
+        return redirect(url_for("funcionarios"))
+
+    employees_df = dal.get_all_employees().fillna("")
+    employees = employees_df.to_dict(orient="records")
+    return render_template("funcionarios.html", employees=employees)
+
+
+@app.route("/funcionarios/<int:employee_id>/toggle", methods=["POST"])
+def toggle_funcionario(employee_id: int):
+    employee = dal.get_employee_by_id(employee_id)
+    if not employee:
+        flash("Funcionário não encontrado.", "danger")
+        return redirect(url_for("funcionarios"))
+    current = str(employee.get("ativo", "")).strip().lower()
+    is_active = current not in {"false", "0", "nao", "não"}
+    dal.update_employee(employee_id, {"ativo": not is_active})
+    flash("Status do funcionário atualizado.", "info")
+    return redirect(url_for("funcionarios"))
 
 
 @app.route("/historico-servicos")
@@ -583,7 +726,7 @@ def _generate_budget_pdf(budget: dict, client: dict, items: List[dict]) -> Bytes
         pdf.cell(0, 0, _pdf_safe_text(label.upper()))
         pdf.set_xy(70, row_y + 2.5)
         pdf.set_font("Arial", "B", 11)
-        pdf.set_text_color(255, 255, 255)
+        pdf.set_text_color(0, 0, 0)
         pdf.cell(0, 0, _pdf_safe_text(value))
         row_y += 14
     pdf.set_y(row_y + 4)
@@ -656,7 +799,11 @@ def _generate_budget_pdf(budget: dict, client: dict, items: List[dict]) -> Bytes
     pdf.set_font("Arial", "B", 12)
     pdf.cell(0, 7, "OBSERVAÇÕES:", ln=1)
     pdf.set_font("Arial", "", 11)
-    pdf.multi_cell(0, 6, OBSERVACOES_PADRAO)
+    responsavel_nome = budget.get("responsavel_planejado_nome") or ""
+    observacoes_texto = OBSERVACOES_PADRAO
+    if responsavel_nome:
+        observacoes_texto += f"\nServiço planejado para: {responsavel_nome}"
+    pdf.multi_cell(0, 6, observacoes_texto)
 
     pdf.ln(4)
     pdf.set_font("Arial", "", 10)
@@ -676,6 +823,7 @@ def _generate_receipt_pdf(
     items: List[dict],
     valor_final: float,
     data_conclusao: datetime,
+    responsavel_execucao: str = "",
 ) -> BytesIO:
     """Gera um recibo baseado nos dados do orçamento e pagamento."""
     pdf = FPDF()
@@ -768,9 +916,12 @@ def _generate_receipt_pdf(
             pdf.cell(col_w - label_w - 4, 5, _pdf_safe_text(value))
         pdf.ln(row_h)
 
+    carro_cor = budget.get("carro_cor") or client.get("carro_cor", "")
+    carro_km = budget.get("carro_km") or ""
+
     row_two("CLIENTE", client.get("nome", ""), "VEICULO", client.get("carro_modelo", ""))
     row_two("MARCA", client.get("carro_marca", ""), "PLACA", client.get("carro_placa", ""))
-    row_three("ANO", client.get("carro_ano", ""), "COR", "", "KM", "")
+    row_three("ANO", client.get("carro_ano", ""), "COR", carro_cor, "KM", carro_km)
 
     # Descrição principal.
     pdf.ln(8)
@@ -790,8 +941,11 @@ def _generate_receipt_pdf(
     pdf.ln(4)
     pdf.set_font("Arial", "B", 10)
     pdf.cell(0, 6, "OBSERVAÇÕES.", ln=1)
+    obs_text = "-"
+    if responsavel_execucao:
+        obs_text = f"Serviço realizado por: {responsavel_execucao}"
     pdf.set_font("Arial", "", 10)
-    pdf.multi_cell(0, 6, "-", border=1)
+    pdf.multi_cell(0, 6, _pdf_safe_text(obs_text), border=1)
 
     # Assinatura / selo pago.
     pdf.ln(6)
@@ -825,10 +979,33 @@ def _generate_receipt_pdf(
     return buffer
 
 
+def _generate_payment_whatsapp_text(
+    client_name: str,
+    budget_id: int,
+    valor_final: float,
+    data_pagamento: datetime,
+) -> str:
+    """Mensagem curta para confirmar pagamento via WhatsApp."""
+    linhas = [
+        f"Olá {client_name}, tudo bem?",
+        f"Confirmamos o pagamento do orçamento #{budget_id}.",
+        f"Valor recebido: R$ {valor_final:.2f}",
+        f"Data: {data_pagamento.strftime('%d/%m/%Y')}",
+        "",
+        "Obrigado pela preferência! Qualquer dúvida é só chamar.",
+    ]
+    return "\n".join(linhas)
+
+
 @app.route("/orcamentos/novo", methods=["GET", "POST"])
 def novo_orcamento():
     clients_df = dal.get_all_clients().fillna("")
     clients = clients_df.to_dict(orient="records")
+    employees_df = dal.get_all_employees()
+    if "ativo" not in employees_df.columns:
+        employees_df["ativo"] = True
+    active_mask = ~employees_df["ativo"].astype(str).str.lower().isin({"false", "0", "nao", "não"})
+    employees = employees_df[active_mask].fillna("").to_dict(orient="records")
 
     if request.method == "POST":
         client_id = int(request.form.get("id_cliente"))
@@ -840,6 +1017,21 @@ def novo_orcamento():
         payment_method = request.form.get("forma_pagamento", "PIX")
         if payment_method not in PAYMENT_OPTIONS:
             payment_method = "PIX"
+
+        responsavel_raw = request.form.get("responsavel_execucao", "").strip()
+        responsavel_id = None
+        responsavel_nome = ""
+        try:
+            responsavel_id = int(responsavel_raw) if responsavel_raw else None
+        except (TypeError, ValueError):
+            responsavel_id = None
+        if responsavel_id:
+            emp = dal.get_employee_by_id(responsavel_id)
+            if emp:
+                responsavel_nome = emp.get("nome", "")
+
+        carro_km = request.form.get("carro_km", "").strip()
+        carro_cor = request.form.get("carro_cor", "").strip()
 
         items = _build_budget_items_from_form(request.form)
         if not items:
@@ -856,6 +1048,10 @@ def novo_orcamento():
             "id_cliente": client_id,
             "data_criacao": datetime.today().strftime("%Y-%m-%d"),
             "status": "Em análise",
+            "carro_km": carro_km,
+            "carro_cor": carro_cor,
+            "responsavel_planejado_id": responsavel_id or "",
+            "responsavel_planejado_nome": responsavel_nome,
             "itens": json.dumps(items, ensure_ascii=False),
             "valor_total": total,
             "texto_whatsapp": texto_whatsapp,
@@ -881,6 +1077,7 @@ def novo_orcamento():
         "novo_orcamento.html",
         clients=clients,
         payment_options=PAYMENT_OPTIONS,
+        employees=employees,
     )
 
 
@@ -930,6 +1127,7 @@ def detalhes_orcamento(budget_id: int):
         can_efetivar=not is_finalizado,
         can_edit=not is_finalizado,
         can_reprovar=not is_finalizado,
+        can_recibo=is_finalizado,
     )
 
 
@@ -957,6 +1155,11 @@ def editar_orcamento(budget_id: int):
     if current_payment not in PAYMENT_OPTIONS:
         current_payment = "PIX"
     final_total = float(budget.get("valor_total", base_total) or base_total)
+    employees_df = dal.get_all_employees()
+    if "ativo" not in employees_df.columns:
+        employees_df["ativo"] = True
+    active_mask = ~employees_df["ativo"].astype(str).str.lower().isin({"false", "0", "nao", "não"})
+    employees = employees_df[active_mask].fillna("").to_dict(orient="records")
 
     if request.method == "POST":
         client_id = int(request.form.get("id_cliente"))
@@ -968,6 +1171,20 @@ def editar_orcamento(budget_id: int):
         payment_method = request.form.get("forma_pagamento", current_payment)
         if payment_method not in PAYMENT_OPTIONS:
             payment_method = "PIX"
+
+        carro_km = request.form.get("carro_km", "").strip()
+        carro_cor = request.form.get("carro_cor", "").strip()
+        responsavel_raw = request.form.get("responsavel_execucao", "").strip()
+        responsavel_id = None
+        responsavel_nome = ""
+        try:
+            responsavel_id = int(responsavel_raw) if responsavel_raw else None
+        except (TypeError, ValueError):
+            responsavel_id = None
+        if responsavel_id:
+            emp = dal.get_employee_by_id(responsavel_id)
+            if emp:
+                responsavel_nome = emp.get("nome", "")
 
         updated_items = _build_budget_items_from_form(request.form)
         if not updated_items:
@@ -984,6 +1201,10 @@ def editar_orcamento(budget_id: int):
             budget_id,
             {
                 "id_cliente": client_id,
+                "carro_km": carro_km,
+                "carro_cor": carro_cor,
+                "responsavel_planejado_id": responsavel_id or "",
+                "responsavel_planejado_nome": responsavel_nome,
                 "itens": json.dumps(updated_items, ensure_ascii=False),
                 "valor_total": total,
                 "texto_whatsapp": texto_whatsapp,
@@ -1003,6 +1224,9 @@ def editar_orcamento(budget_id: int):
         current_payment=current_payment,
         base_total=base_total,
         final_total=final_total,
+        employees=employees,
+        responsavel_planejado_id=budget.get("responsavel_planejado_id"),
+        responsavel_planejado_nome=budget.get("responsavel_planejado_nome"),
     )
 
 
@@ -1036,6 +1260,9 @@ def gerar_recibo(budget_id: int):
     if not budget:
         flash("Orçamento não encontrado.", "danger")
         return redirect(url_for("listar_orcamentos"))
+    if not _is_budget_finalized(budget.get("status", "")):
+        flash("O recibo só está disponível para orçamentos concluídos.", "warning")
+        return redirect(url_for("detalhes_orcamento", budget_id=budget_id))
 
     client = dal.get_client_by_id(int(budget["id_cliente"]))
     if not client:
@@ -1052,6 +1279,17 @@ def gerar_recibo(budget_id: int):
         budget.get("data_conclusao") or budget.get("data_criacao") or datetime.today()
     )
 
+    responsavel_receipt = ""
+    services_df = dal.get_all_services()
+    if "responsavel" in services_df.columns:
+        resp_candidates = services_df[
+            (services_df["id_orcamento"] == budget_id) & services_df["responsavel"].notna()
+        ]
+        if not resp_candidates.empty:
+            responsavel_receipt = str(resp_candidates.iloc[0]["responsavel"]).strip()
+    if not responsavel_receipt:
+        responsavel_receipt = budget.get("responsavel_planejado_nome", "")
+
     pdf_buffer = _generate_receipt_pdf(
         budget_id=budget_id,
         budget=budget,
@@ -1059,6 +1297,7 @@ def gerar_recibo(budget_id: int):
         items=items,
         valor_final=valor_final,
         data_conclusao=data_conclusao,
+        responsavel_execucao=responsavel_receipt,
     )
     filename = f"recibo_{budget_id}_{_slugify_filename(client.get('nome', ''))}.pdf"
     pdf_buffer.seek(0)
@@ -1104,13 +1343,34 @@ def efetivar_orcamento(budget_id: int):
         float(item.get("subtotal", item.get("quantidade", 0) * item.get("valor_unitario", 0)) or 0)
         for item in items
     )
+    employees_df = dal.get_all_employees()
+    if "ativo" not in employees_df.columns:
+        employees_df["ativo"] = True
+    active_mask = ~employees_df["ativo"].astype(str).str.lower().isin({"false", "0", "nao", "não"})
+    employees = employees_df[active_mask].fillna("").to_dict(orient="records")
 
     if request.method == "POST":
         forma_pagamento = request.form.get("forma_pagamento", "")
-        data_conclusao = _parse_date(request.form.get("data_conclusao"))
+        data_status = _parse_date(request.form.get("data_conclusao"))
         status_final = request.form.get("status_final", "Concluído")
+        is_final_approval = _is_budget_finalized(status_final)
+        responsavel_id_raw = request.form.get("responsavel_execucao", "").strip()
+        responsavel_execucao = ""
         if forma_pagamento not in PAYMENT_OPTIONS:
             flash("Escolha uma forma de pagamento válida.", "warning")
+            return redirect(url_for("efetivar_orcamento", budget_id=budget_id))
+        if is_final_approval:
+            try:
+                responsavel_id = int(responsavel_id_raw)
+            except (TypeError, ValueError):
+                responsavel_id = None
+            employee = dal.get_employee_by_id(responsavel_id) if responsavel_id else None
+            if not employee:
+                flash("Informe quem executou o serviço.", "warning")
+                return redirect(url_for("efetivar_orcamento", budget_id=budget_id))
+            responsavel_execucao = str(employee.get("nome", "")).strip()
+        if is_final_approval and not responsavel_execucao:
+            flash("Informe quem executou o serviço.", "warning")
             return redirect(url_for("efetivar_orcamento", budget_id=budget_id))
 
         taxa = 0.0
@@ -1119,33 +1379,42 @@ def efetivar_orcamento(budget_id: int):
             taxa = round(base_total * 0.03, 2)
             valor_final = round(base_total + taxa, 2)
 
+        data_conclusao_str = data_status.strftime("%Y-%m-%d") if is_final_approval else ""
         dal.update_budget(
             budget_id,
             {
                 "status": status_final,
-                "data_aprovacao": data_conclusao.strftime("%Y-%m-%d"),
-                "data_conclusao": data_conclusao.strftime("%Y-%m-%d"),
+                "data_aprovacao": data_status.strftime("%Y-%m-%d"),
+                "data_conclusao": data_conclusao_str,
                 "forma_pagamento": forma_pagamento,
                 "valor_total": valor_final,
             },
         )
+
+        if not is_final_approval:
+            flash(
+                "Orçamento aprovado e aguardando execução. Nenhum lançamento financeiro foi criado até a conclusão.",
+                "info",
+            )
+            return redirect(url_for("detalhes_orcamento", budget_id=budget_id))
 
         for item in items:
             dal.add_service(
                 {
                     "id_orcamento": budget_id,
                     "id_cliente": budget["id_cliente"],
-                    "data_execucao": data_conclusao.strftime("%Y-%m-%d"),
+                    "data_execucao": data_status.strftime("%Y-%m-%d"),
                     "descricao_servico": item.get("descricao"),
                     "tipo_servico": item.get("tipo"),
                     "valor": item.get("subtotal"),
                     "observacoes": "",
+                    "responsavel": responsavel_execucao,
                 }
             )
 
         dal.add_financial_entry(
             {
-                "data": data_conclusao.strftime("%Y-%m-%d"),
+                "data": data_status.strftime("%Y-%m-%d"),
                 "tipo_lancamento": "Entrada",
                 "categoria": "Serviço Oficina",
                 "descricao": f"Orçamento #{budget_id} - {client['nome']}",
@@ -1155,21 +1424,18 @@ def efetivar_orcamento(budget_id: int):
             }
         )
 
-        recibo_buffer = _generate_receipt_pdf(
-            budget_id,
-            budget,
-            client,
-            items,
-            valor_final,
-            data_conclusao,
+        pagamento_texto_whatsapp = _generate_payment_whatsapp_text(
+            client.get("nome", "cliente"), budget_id, valor_final, data_status
         )
-        filename = f"recibo_{budget_id}_{_slugify_filename(client.get('nome', ''))}.pdf"
-        recibo_buffer.seek(0)
-        return send_file(
-            recibo_buffer,
-            as_attachment=True,
-            download_name=filename,
-            mimetype="application/pdf",
+
+        return render_template(
+            "pagamento_concluido.html",
+            budget_id=budget_id,
+            client=client,
+            items=items,
+            valor_final=valor_final,
+            data_pagamento=data_status,
+            texto_whatsapp=pagamento_texto_whatsapp,
         )
 
     return render_template(
@@ -1179,6 +1445,7 @@ def efetivar_orcamento(budget_id: int):
         items=items,
         payment_options=PAYMENT_OPTIONS,
         base_total=base_total,
+        employees=employees,
     )
 
 

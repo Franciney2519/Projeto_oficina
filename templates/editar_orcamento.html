@@ -18,6 +18,32 @@
             </select>
           </div>
 
+          <div class="row">
+            <div class="col-md-6">
+              <div class="mb-3">
+                <label class="form-label">KM do veículo</label>
+                <input type="text" name="carro_km" class="form-control" value="{{ budget.carro_km or '' }}">
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="mb-3">
+                <label class="form-label">Cor do veículo</label>
+                <input type="text" name="carro_cor" class="form-control" value="{{ budget.carro_cor or '' }}">
+              </div>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Responsável planejado</label>
+            <select name="responsavel_execucao" class="form-select">
+              <option value="">Selecione</option>
+              {% for emp in employees %}
+                <option value="{{ emp.id_funcionario }}" {% if emp.id_funcionario == budget.responsavel_planejado_id %}selected{% endif %}>
+                  {{ emp.nome }}{% if emp.cargo %} - {{ emp.cargo }}{% endif %}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+
           <div class="mb-3">
             <label class="form-label">Forma de pagamento</label>
             <select name="forma_pagamento" id="formaPagamento" class="form-select" required>

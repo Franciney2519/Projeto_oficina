@@ -32,11 +32,26 @@
             <input type="date" name="data_conclusao" class="form-control" value="{{ date|default('', true) }}">
           </div>
           <div class="mb-3">
+            <label class="form-label">Responsável pela execução</label>
+            <select name="responsavel_execucao" class="form-select">
+              <option value="">Selecione</option>
+              {% for emp in employees %}
+                <option value="{{ emp.id_funcionario }}" {% if emp.id_funcionario == budget.responsavel_planejado_id %}selected{% endif %}>
+                  {{ emp.nome }}{% if emp.cargo %} - {{ emp.cargo }}{% endif %}
+                </option>
+              {% endfor %}
+            </select>
+            <div class="form-text">Obrigatório apenas ao concluir; será exibido no financeiro e histórico.</div>
+          </div>
+          <div class="mb-3">
             <label class="form-label">Status final</label>
             <select name="status_final" class="form-select">
               <option value="Concluído" selected>Concluído</option>
               <option value="Aprovado">Aprovado (aguardando execução)</option>
             </select>
+            <div class="form-text">
+              Se deixar como "Aprovado", nada será lançado no financeiro nem será gerado recibo até concluir o serviço.
+            </div>
           </div>
           <button type="submit" class="btn btn-success">Confirmar efetivação</button>
         </form>
