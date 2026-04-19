@@ -366,15 +366,6 @@ def _format_date(date_value) -> str:
         return str(date_value)
 
 
-@app.before_request
-def require_entry():
-    """Obrigar passar pela tela inicial antes de acessar o app."""
-    allowed = {"landing", "enter_app", "favicon", "static"}
-    if request.endpoint in allowed or (request.endpoint or "").startswith("static"):
-        return
-    if not session.get("has_entered"):
-        return redirect(url_for("landing"))
-
 
 @app.route("/")
 def landing():
