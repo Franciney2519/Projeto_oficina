@@ -113,7 +113,10 @@ def login():
 @app.route("/logout")
 def logout():
     session.clear()
-    return redirect("/login")
+    resp = redirect("/login")
+    resp.delete_cookie("session")
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    return resp
 
 
 # Informações fixas usadas no PDF do orçamento.
