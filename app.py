@@ -78,6 +78,40 @@ app = Flask(
 )
 app.secret_key = os.environ.get("SECRET_KEY", "oficina-mecanica-secret-dev")
 
+APP_USERNAME = os.environ.get("APP_USERNAME", "admin")
+APP_PASSWORD = os.environ.get("APP_PASSWORD", "oficina123")
+
+PUBLIC_ROUTES = {"login", "static", "favicon"}
+
+
+@app.before_request
+def require_login():
+    if request.endpoint in PUBLIC_ROUTES:
+        return
+    if not session.get("logged_in"):
+        return redirect(url_for("login"))
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if session.get("logged_in"):
+        return redirect(url_for("dashboard"))
+    error = None
+    if request.method == "POST":
+        if (request.form.get("username") == APP_USERNAME and
+                request.form.get("password") == APP_PASSWORD):
+            session["logged_in"] = True
+            return redirect(url_for("dashboard"))
+        error = "Usuário ou senha incorretos."
+    return render_template("login.html", error=error)
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
+
+
 # Informações fixas usadas no PDF do orçamento.
 COMPANY_INFO = {
     "razao_social": "R R A AUTOS",
