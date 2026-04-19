@@ -81,6 +81,9 @@ app = Flask(
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
 app.secret_key = os.environ.get("SECRET_KEY", "oficina-mecanica-secret-dev")
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = False
 
 APP_USERNAME = os.environ.get("APP_USERNAME", "admin")
 APP_PASSWORD = os.environ.get("APP_PASSWORD", "oficina123")
@@ -88,26 +91,29 @@ APP_PASSWORD = os.environ.get("APP_PASSWORD", "oficina123")
 
 @app.before_request
 def require_login():
-    if request.path.startswith("/static") or request.path in ("/favicon.ico", "/logout"):
+    if request.path.startswith("/static") or request.path in ("/favicon.ico", "/login", "/logout"):
         return
-    auth = request.authorization
-    if not auth or auth.username != APP_USERNAME or auth.password != APP_PASSWORD:
-        from flask import Response as _R
-        return _R(
-            "Login necessário para acessar o sistema.",
-            401,
-            {"WWW-Authenticate": 'Basic realm="Oficina Rogerio Reis"'},
-        )
+    if not session.get("logged_in"):
+        return redirect("/login")
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    error = None
+    if request.method == "POST":
+        if (request.form.get("username") == APP_USERNAME and
+                request.form.get("password") == APP_PASSWORD):
+            session.clear()
+            session["logged_in"] = True
+            return redirect("/dashboard")
+        error = "Usuário ou senha incorretos."
+    return render_template("login.html", error=error)
 
 
 @app.route("/logout")
 def logout():
-    from flask import Response as _R
-    return _R(
-        "Você saiu do sistema. Faça login novamente.",
-        401,
-        {"WWW-Authenticate": 'Basic realm="Oficina Rogerio Reis"'},
-    )
+    session.clear()
+    return redirect("/login")
 
 
 # Informações fixas usadas no PDF do orçamento.
