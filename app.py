@@ -81,9 +81,14 @@ app.secret_key = os.environ.get("SECRET_KEY", "oficina-mecanica-secret-dev")
 APP_USERNAME = os.environ.get("APP_USERNAME", "admin")
 APP_PASSWORD = os.environ.get("APP_PASSWORD", "oficina123")
 
+_PUBLIC_PATHS = {"/login", "/favicon.ico"}
+
+
 @app.before_request
 def require_login():
-    if request.path.startswith("/static") or request.path in ("/login", "/favicon.ico"):
+    if request.path.startswith("/static"):
+        return
+    if request.path in _PUBLIC_PATHS:
         return
     if not session.get("logged_in"):
         return redirect("/login")
@@ -92,13 +97,14 @@ def require_login():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if session.get("logged_in"):
-        return redirect("/")
+        return redirect("/dashboard")
     error = None
     if request.method == "POST":
         if (request.form.get("username") == APP_USERNAME and
                 request.form.get("password") == APP_PASSWORD):
             session["logged_in"] = True
-            return redirect("/")
+            session.modified = True
+            return redirect("/dashboard")
         error = "Usuário ou senha incorretos."
     return render_template("login.html", error=error)
 
