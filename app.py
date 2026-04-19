@@ -88,7 +88,7 @@ APP_PASSWORD = os.environ.get("APP_PASSWORD", "oficina123")
 
 @app.before_request
 def require_login():
-    if request.path.startswith("/static") or request.path == "/favicon.ico":
+    if request.path.startswith("/static") or request.path in ("/favicon.ico", "/logout"):
         return
     auth = request.authorization
     if not auth or auth.username != APP_USERNAME or auth.password != APP_PASSWORD:
@@ -98,6 +98,16 @@ def require_login():
             401,
             {"WWW-Authenticate": 'Basic realm="Oficina Rogerio Reis"'},
         )
+
+
+@app.route("/logout")
+def logout():
+    from flask import Response as _R
+    return _R(
+        "Você saiu do sistema. Faça login novamente.",
+        401,
+        {"WWW-Authenticate": 'Basic realm="Oficina Rogerio Reis"'},
+    )
 
 
 # Informações fixas usadas no PDF do orçamento.
