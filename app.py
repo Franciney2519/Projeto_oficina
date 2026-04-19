@@ -81,27 +81,24 @@ app.secret_key = os.environ.get("SECRET_KEY", "oficina-mecanica-secret-dev")
 APP_USERNAME = os.environ.get("APP_USERNAME", "admin")
 APP_PASSWORD = os.environ.get("APP_PASSWORD", "oficina123")
 
-PUBLIC_ROUTES = {"login", "static", "favicon"}
-
-
 @app.before_request
 def require_login():
-    if request.endpoint in PUBLIC_ROUTES:
+    if request.path.startswith("/static") or request.path in ("/login", "/favicon.ico"):
         return
     if not session.get("logged_in"):
-        return redirect(url_for("login"))
+        return redirect("/login")
 
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if session.get("logged_in"):
-        return redirect(url_for("dashboard"))
+        return redirect("/")
     error = None
     if request.method == "POST":
         if (request.form.get("username") == APP_USERNAME and
                 request.form.get("password") == APP_PASSWORD):
             session["logged_in"] = True
-            return redirect(url_for("dashboard"))
+            return redirect("/")
         error = "Usuário ou senha incorretos."
     return render_template("login.html", error=error)
 
@@ -109,7 +106,7 @@ def login():
 @app.route("/logout")
 def logout():
     session.clear()
-    return redirect(url_for("login"))
+    return redirect("/login")
 
 
 # Informações fixas usadas no PDF do orçamento.
