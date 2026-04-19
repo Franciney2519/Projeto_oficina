@@ -47,6 +47,7 @@ from flask import (
     send_file,
     session,
 )
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from fpdf import FPDF
 
@@ -76,7 +77,12 @@ app = Flask(
     template_folder=os.path.join(PROJECT_DIR, "templates"),
     static_folder=os.path.join(PROJECT_DIR, "static"),
 )
+# Necessário para que Flask reconheça HTTPS quando atrás do proxy do Railway
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+
 app.secret_key = os.environ.get("SECRET_KEY", "oficina-mecanica-secret-dev")
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
 APP_USERNAME = os.environ.get("APP_USERNAME", "admin")
 APP_PASSWORD = os.environ.get("APP_PASSWORD", "oficina123")
@@ -102,8 +108,8 @@ def login():
     if request.method == "POST":
         if (request.form.get("username") == APP_USERNAME and
                 request.form.get("password") == APP_PASSWORD):
+            session.permanent = True
             session["logged_in"] = True
-            session.modified = True
             return redirect("/dashboard")
         error = "Usuário ou senha incorretos."
     return render_template("login.html", error=error)
