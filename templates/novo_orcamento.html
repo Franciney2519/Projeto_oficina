@@ -152,7 +152,7 @@ function adicionarItem() {
         <div class="col-6">
           <label class="form-label small fw-semibold">Quantidade</label>
           <input type="number" step="0.01" min="0" name="item_quantidade[]"
-                 class="form-control form-control-lg inp-qtd" placeholder="1">
+                 class="form-control form-control-lg inp-qtd" value="1">
         </div>
         <div class="col-6">
           <label class="form-label small fw-semibold">Valor unit. (R$)</label>
@@ -170,6 +170,7 @@ function adicionarItem() {
   });
 
   listaItens.appendChild(div);
+  atualizarTotal();
   div.querySelector('input[name="item_descricao[]"]').focus();
 }
 
