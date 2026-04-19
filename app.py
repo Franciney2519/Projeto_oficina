@@ -1,16 +1,14 @@
 """
-Aplicação Flask para gestão básica de oficina mecânica utilizando arquivos
-Excel como persistência.
+Aplicação Flask para gestão de oficina mecânica.
 
-Como executar:
-    1. Instale as dependências: pip install flask pandas openpyxl fpdf
-    2. Execute: python app.py
-    3. Acesse http://127.0.0.1:5000/ em seu navegador.
+Desenvolvimento local:
+    1. Copie .env.example para .env e preencha DATABASE_URL (Supabase).
+    2. pip install -r requirements.txt
+    3. python app.py
 
-Arquivos de dados:
-    Os arquivos .xlsx serão criados automaticamente na raiz do projeto
-    (mesmo diretório deste app.py). Caso deseje adicionar novos campos,
-    atualize as listas de colunas em data_access.py e adapte os formulários.
+Produção (Railway / Render):
+    - Configure DATABASE_URL e SECRET_KEY nas variáveis de ambiente da plataforma.
+    - O Procfile já configura o gunicorn automaticamente.
 """
 from __future__ import annotations
 
@@ -18,6 +16,13 @@ import json
 import os
 import sys
 from datetime import datetime
+
+# Carrega variáveis do .env em desenvolvimento local
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 import math
 import unicodedata
 import webbrowser
@@ -71,7 +76,7 @@ app = Flask(
     template_folder=os.path.join(PROJECT_DIR, "templates"),
     static_folder=os.path.join(PROJECT_DIR, "static"),
 )
-app.secret_key = "oficina-mecanica-secret"  # Necessário para mensagens flash
+app.secret_key = os.environ.get("SECRET_KEY", "oficina-mecanica-secret-dev")
 
 # Informações fixas usadas no PDF do orçamento.
 COMPANY_INFO = {
@@ -1521,9 +1526,7 @@ if __name__ == "__main__":
     def open_browser():
         webbrowser.open_new("http://127.0.0.1:5000/")
 
-    # Abre o navegador automaticamente (pode desativar com FLASK_NO_BROWSER=1).
     if not os.environ.get("FLASK_NO_BROWSER") and not os.environ.get("WERKZEUG_RUN_MAIN"):
         Timer(1, open_browser).start()
 
-    # Em executável, roda sem debugger nem reloader para evitar erros de assets.
-    app.run(debug=debug_mode, use_reloader=debug_mode)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=debug_mode, use_reloader=debug_mode)
