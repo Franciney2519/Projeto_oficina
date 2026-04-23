@@ -8,8 +8,8 @@
         <h5 class="card-title">Orçamento #{{ budget.id_orcamento }}</h5>
         <p><strong>Status:</strong> {{ budget.status }}</p>
         <p><strong>Cliente:</strong> {{ client.nome }} - {{ client.telefone_whatsapp }}</p>
-        <p><strong>Veículo:</strong> {{ client.carro_marca }} {{ client.carro_modelo }} {{ client.carro_ano }} ({{ client.carro_placa }})</p>
-        <p><strong>Cor / KM informados:</strong> {{ budget.carro_cor or 'N/D' }} / {{ budget.carro_km or 'N/D' }}</p>
+        <p><strong>Veículo:</strong> {{ veiculo.marca }} {{ veiculo.modelo }} {{ veiculo.ano }}{% if veiculo.placa %} ({{ veiculo.placa }}){% endif %}</p>
+        <p><strong>Cor / KM informados:</strong> {{ budget.carro_cor or veiculo.cor or 'N/D' }} / {{ budget.carro_km or 'N/D' }}</p>
         <p><strong>Responsável planejado:</strong> {{ budget.responsavel_planejado_nome or 'N/D' }}</p>
         <p><strong>Forma de pagamento:</strong> {{ forma_pagamento }}{% if taxa > 0 %} (taxa R$ {{ '%.2f'|format(taxa) }}){% endif %}</p>
         <p><strong>Valor dos itens:</strong> R$ {{ '%.2f'|format(base_total) }}</p>

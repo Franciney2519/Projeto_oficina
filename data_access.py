@@ -36,8 +36,11 @@ CLIENT_COLUMNS = [
     "endereco_cidade", "endereco_uf", "endereco_cep",
     "carro_marca", "carro_modelo", "carro_ano", "carro_placa", "observacoes",
 ]
+VEICULO_COLUMNS = [
+    "id_veiculo", "id_cliente", "marca", "modelo", "ano", "placa", "cor", "observacoes",
+]
 ORCAMENTO_COLUMNS = [
-    "id_orcamento", "id_cliente", "data_criacao", "status", "carro_km",
+    "id_orcamento", "id_cliente", "id_veiculo", "data_criacao", "status", "carro_km",
     "carro_cor", "responsavel_planejado_id", "responsavel_planejado_nome",
     "itens", "valor_total", "texto_whatsapp", "data_aprovacao",
     "data_conclusao", "forma_pagamento",
@@ -93,9 +96,23 @@ def init_db() -> None:
                 )
             """)
             cur.execute("""
+                CREATE TABLE IF NOT EXISTS veiculos (
+                    id_veiculo  SERIAL PRIMARY KEY,
+                    id_cliente  INTEGER,
+                    marca       TEXT,
+                    modelo      TEXT,
+                    ano         TEXT,
+                    placa       TEXT,
+                    cor         TEXT,
+                    observacoes TEXT
+                )
+            """)
+            cur.execute("ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS cor TEXT")
+            cur.execute("""
                 CREATE TABLE IF NOT EXISTS orcamentos (
                     id_orcamento               SERIAL PRIMARY KEY,
                     id_cliente                 INTEGER,
+                    id_veiculo                 INTEGER,
                     data_criacao               TEXT,
                     status                     TEXT,
                     carro_km                   TEXT,
@@ -109,6 +126,10 @@ def init_db() -> None:
                     data_conclusao             TEXT,
                     forma_pagamento            TEXT
                 )
+            """)
+            # Adiciona id_veiculo em orçamentos antigos (se a coluna ainda não existir)
+            cur.execute("""
+                ALTER TABLE orcamentos ADD COLUMN IF NOT EXISTS id_veiculo INTEGER
             """)
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS servicos (
@@ -143,6 +164,20 @@ def init_db() -> None:
                     cargo          TEXT,
                     observacoes    TEXT,
                     ativo          TEXT
+                )
+            """)
+            # Migra carros já cadastrados nos clientes para a tabela veiculos (executa só uma vez)
+            cur.execute("""
+                INSERT INTO veiculos (id_cliente, marca, modelo, ano, placa)
+                SELECT c.id_cliente, c.carro_marca, c.carro_modelo, c.carro_ano, c.carro_placa
+                FROM clientes c
+                WHERE (
+                    (c.carro_marca   IS NOT NULL AND c.carro_marca   <> '')
+                    OR (c.carro_modelo IS NOT NULL AND c.carro_modelo <> '')
+                    OR (c.carro_placa  IS NOT NULL AND c.carro_placa  <> '')
+                )
+                AND NOT EXISTS (
+                    SELECT 1 FROM veiculos v WHERE v.id_cliente = c.id_cliente
                 )
             """)
         conn.commit()
@@ -222,6 +257,95 @@ def update_client(client_id: int, data: Dict) -> bool:
             updated = cur.rowcount > 0
         conn.commit()
         return updated
+    finally:
+        conn.close()
+
+
+# ---------------------------
+# Veículos
+# ---------------------------
+
+def get_all_vehicles() -> List[Dict]:
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM veiculos ORDER BY id_cliente, id_veiculo")
+            return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def get_vehicles_by_client(client_id: int) -> List[Dict]:
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT * FROM veiculos WHERE id_cliente = %s ORDER BY id_veiculo",
+                (client_id,),
+            )
+            return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def get_vehicle_by_id(vehicle_id: int) -> Optional[Dict]:
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM veiculos WHERE id_veiculo = %s", (vehicle_id,))
+            row = cur.fetchone()
+            return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def add_vehicle(data: Dict) -> int:
+    data.pop("id_veiculo", None)
+    cols = [c for c in VEICULO_COLUMNS if c != "id_veiculo"]
+    values = [data.get(c) for c in cols]
+    sql = (
+        f"INSERT INTO veiculos ({', '.join(cols)}) "
+        f"VALUES ({', '.join(['%s'] * len(cols))}) RETURNING id_veiculo"
+    )
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql, values)
+            new_id = cur.fetchone()["id_veiculo"]
+        conn.commit()
+        return new_id
+    finally:
+        conn.close()
+
+
+def update_vehicle(vehicle_id: int, data: Dict) -> bool:
+    data.pop("id_veiculo", None)
+    if not data:
+        return False
+    set_clause = ", ".join(f"{k} = %s" for k in data)
+    values = list(data.values()) + [vehicle_id]
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"UPDATE veiculos SET {set_clause} WHERE id_veiculo = %s",
+                values,
+            )
+            updated = cur.rowcount > 0
+        conn.commit()
+        return updated
+    finally:
+        conn.close()
+
+
+def delete_vehicle(vehicle_id: int) -> bool:
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM veiculos WHERE id_veiculo = %s", (vehicle_id,))
+            deleted = cur.rowcount > 0
+        conn.commit()
+        return deleted
     finally:
         conn.close()
 

@@ -10,11 +10,18 @@
 
           <div class="mb-3">
             <label class="form-label fw-semibold">Cliente</label>
-            <select name="id_cliente" class="form-select form-select-lg" required>
+            <select name="id_cliente" id="selectCliente" class="form-select form-select-lg" required>
               <option value="">Selecione</option>
               {% for cliente in clients %}
-                <option value="{{ cliente.id_cliente }}">{{ cliente.nome }} — {{ cliente.carro_marca }} {{ cliente.carro_modelo }} ({{ cliente.carro_placa }})</option>
+                <option value="{{ cliente.id_cliente }}">{{ cliente.nome }}</option>
               {% endfor %}
+            </select>
+          </div>
+
+          <div class="mb-3" id="blocoVeiculo" style="display:none">
+            <label class="form-label fw-semibold">Veículo</label>
+            <select name="id_veiculo" id="selectVeiculo" class="form-select form-select-lg">
+              <option value="">Selecione o veículo</option>
             </select>
           </div>
 
@@ -24,8 +31,8 @@
               <input type="text" name="carro_km" class="form-control form-control-lg" placeholder="Ex.: 120000">
             </div>
             <div class="col-6">
-              <label class="form-label fw-semibold">Cor</label>
-              <input type="text" name="carro_cor" class="form-control form-control-lg" placeholder="Ex.: Prata">
+              <label class="form-label fw-semibold">Cor (confirmação)</label>
+              <input type="text" name="carro_cor" id="inputCor" class="form-control form-control-lg" placeholder="Ex.: Prata">
             </div>
           </div>
 
@@ -71,7 +78,6 @@
             </div>
           </div>
 
-          <!-- Campos ocultos para submissão -->
           <input type="hidden" id="hiddenTotalBase" name="valor_total_base" value="0">
           <input type="hidden" id="hiddenTotalFinal" name="valor_total_final" value="0">
 
@@ -86,7 +92,7 @@
 
   <div class="col-lg-4 d-none d-lg-block">
     <div class="alert alert-info">
-      Preencha os itens com quantidade e valor unitário. O sistema calcula o total automaticamente.
+      Selecione o cliente e depois o veículo. Preencha os itens com quantidade e valor unitário. O sistema calcula o total automaticamente.
     </div>
   </div>
 </div>
@@ -94,13 +100,18 @@
 
 {% block scripts %}
 <script>
-const listaItens = document.getElementById('listaItens');
-const btnAdicionar = document.getElementById('btnAdicionarItem');
+const vehiclesByClient = {{ vehicles_by_client | tojson }};
+const selectCliente  = document.getElementById('selectCliente');
+const selectVeiculo  = document.getElementById('selectVeiculo');
+const blocoVeiculo   = document.getElementById('blocoVeiculo');
+const inputCor       = document.getElementById('inputCor');
+const listaItens     = document.getElementById('listaItens');
+const btnAdicionar   = document.getElementById('btnAdicionarItem');
 const formaPagamento = document.getElementById('formaPagamento');
-const spanBase = document.getElementById('valorTotalBase');
-const spanFinal = document.getElementById('valorTotalFinal');
-const hiddenBase = document.getElementById('hiddenTotalBase');
-const hiddenFinal = document.getElementById('hiddenTotalFinal');
+const spanBase       = document.getElementById('valorTotalBase');
+const spanFinal      = document.getElementById('valorTotalFinal');
+const hiddenBase     = document.getElementById('hiddenTotalBase');
+const hiddenFinal    = document.getElementById('hiddenTotalFinal');
 
 function formatBRL(v) {
   return 'R$ ' + v.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
@@ -113,17 +124,39 @@ function atualizarTotal() {
     const valor = parseFloat(card.querySelector('.inp-valor').value.replace(',', '.')) || 0;
     total += qtd * valor;
   });
-
   let final = total;
-  if (formaPagamento.value === 'Cartão Crédito') {
-    final = +(total * 1.03).toFixed(2);
-  }
-
+  if (formaPagamento.value === 'Cartão Crédito') final = +(total * 1.03).toFixed(2);
   spanBase.textContent  = formatBRL(total);
   spanFinal.textContent = formatBRL(final);
   hiddenBase.value  = total.toFixed(2);
   hiddenFinal.value = final.toFixed(2);
 }
+
+selectCliente.addEventListener('change', function() {
+  const cid = this.value;
+  selectVeiculo.innerHTML = '<option value="">Selecione o veículo</option>';
+  inputCor.value = '';
+  if (!cid) { blocoVeiculo.style.display = 'none'; return; }
+  const veiculos = vehiclesByClient[cid] || [];
+  veiculos.forEach(v => {
+    const opt = document.createElement('option');
+    opt.value = v.id_veiculo ?? '';
+    const label = [v.marca, v.modelo, v.ano, v.placa ? '(' + v.placa + ')' : ''].filter(Boolean).join(' ');
+    opt.textContent = label || 'Veículo sem dados';
+    opt.dataset.cor = v.cor || '';
+    selectVeiculo.appendChild(opt);
+  });
+  blocoVeiculo.style.display = veiculos.length ? '' : 'none';
+  if (veiculos.length === 1) {
+    selectVeiculo.selectedIndex = 1;
+    selectVeiculo.dispatchEvent(new Event('change'));
+  }
+});
+
+selectVeiculo.addEventListener('change', function() {
+  const opt = this.options[this.selectedIndex];
+  inputCor.value = opt ? (opt.dataset.cor || '') : '';
+});
 
 let contadorItens = 0;
 function adicionarItem() {
@@ -160,15 +193,9 @@ function adicionarItem() {
                  class="form-control form-control-lg inp-valor" placeholder="0,00">
         </div>
       </div>
-    </div>
-  `;
-
+    </div>`;
   div.querySelectorAll('input').forEach(i => i.addEventListener('input', atualizarTotal));
-  div.querySelector('.btn-remover').addEventListener('click', () => {
-    div.remove();
-    atualizarTotal();
-  });
-
+  div.querySelector('.btn-remover').addEventListener('click', () => { div.remove(); atualizarTotal(); });
   listaItens.appendChild(div);
   atualizarTotal();
   div.querySelector('input[name="item_descricao[]"]').focus();

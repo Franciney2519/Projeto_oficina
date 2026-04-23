@@ -40,6 +40,7 @@ except ImportError as exc:  # Segurança: caso pandas não esteja disponível ai
 from flask import (
     Flask,
     flash,
+    jsonify,
     redirect,
     render_template,
     request,
@@ -480,25 +481,79 @@ CLIENT_FIELDS = [
     "endereco_cidade",
     "endereco_uf",
     "endereco_cep",
-    "carro_marca",
-    "carro_modelo",
-    "carro_ano",
-    "carro_placa",
     "observacoes",
 ]
 EMPLOYEE_FIELDS = ["nome", "telefone", "cargo", "observacoes"]
+
+
+def _build_vehicles_map() -> dict:
+    """Retorna dict {id_cliente: [veiculos]} para uso nas views."""
+    all_vehicles = dal.get_all_vehicles()
+    vmap: dict = {}
+    for v in all_vehicles:
+        cid = v["id_cliente"]
+        vmap.setdefault(cid, []).append(v)
+    return vmap
+
+
+def _get_veiculo_for_orcamento(budget: dict, client: dict) -> dict:
+    """Retorna veículo do orçamento (tabela veiculos) ou fallback nos campos legados do cliente."""
+    id_veiculo = budget.get("id_veiculo")
+    if id_veiculo:
+        try:
+            v = dal.get_vehicle_by_id(int(id_veiculo))
+            if v:
+                return v
+        except (TypeError, ValueError):
+            pass
+    return {
+        "id_veiculo": None,
+        "marca": (client or {}).get("carro_marca", ""),
+        "modelo": (client or {}).get("carro_modelo", ""),
+        "ano": (client or {}).get("carro_ano", ""),
+        "placa": (client or {}).get("carro_placa", ""),
+        "observacoes": "",
+    }
 
 
 @app.route("/clientes", methods=["GET", "POST"])
 def clientes():
     if request.method == "POST":
         payload = {field: request.form.get(field, "").strip() for field in CLIENT_FIELDS}
-        dal.add_client(payload)
+        # Mantém campos legados vazios para compatibilidade
+        payload.update({"carro_marca": "", "carro_modelo": "", "carro_ano": "", "carro_placa": ""})
+        client_id = dal.add_client(payload)
+
+        marcas  = request.form.getlist("carro_marca[]")
+        modelos = request.form.getlist("carro_modelo[]")
+        anos    = request.form.getlist("carro_ano[]")
+        placas  = request.form.getlist("carro_placa[]")
+        cores   = request.form.getlist("carro_cor[]")
+        for i in range(len(marcas)):
+            marca  = marcas[i].strip()
+            modelo = modelos[i].strip() if i < len(modelos) else ""
+            ano    = anos[i].strip()    if i < len(anos)    else ""
+            placa  = placas[i].strip()  if i < len(placas)  else ""
+            cor    = cores[i].strip()   if i < len(cores)   else ""
+            if marca or modelo or placa:
+                dal.add_vehicle({"id_cliente": client_id, "marca": marca,
+                                 "modelo": modelo, "ano": ano, "placa": placa,
+                                 "cor": cor, "observacoes": ""})
+
         flash("Cliente cadastrado com sucesso!", "success")
         return redirect(url_for("clientes"))
 
     clients_df = dal.get_all_clients().fillna("")
     clients = clients_df.to_dict(orient="records")
+    vmap = _build_vehicles_map()
+    for c in clients:
+        cid = c["id_cliente"]
+        veiculos = vmap.get(cid, [])
+        if not veiculos and (c.get("carro_marca") or c.get("carro_placa")):
+            veiculos = [{"id_veiculo": None, "marca": c.get("carro_marca", ""),
+                         "modelo": c.get("carro_modelo", ""), "ano": c.get("carro_ano", ""),
+                         "placa": c.get("carro_placa", "")}]
+        c["veiculos"] = veiculos
     return render_template("clientes.html", clients=clients)
 
 
@@ -515,7 +570,68 @@ def editar_cliente(client_id: int):
         flash("Cliente atualizado com sucesso!", "success")
         return redirect(url_for("clientes"))
 
-    return render_template("editar_cliente.html", client=client)
+    veiculos = dal.get_vehicles_by_client(client_id)
+    if not veiculos and (client.get("carro_marca") or client.get("carro_placa")):
+        veiculos = [{"id_veiculo": None, "marca": client.get("carro_marca", ""),
+                     "modelo": client.get("carro_modelo", ""), "ano": client.get("carro_ano", ""),
+                     "placa": client.get("carro_placa", ""), "observacoes": ""}]
+    return render_template("editar_cliente.html", client=client, veiculos=veiculos)
+
+
+@app.route("/api/clientes/<int:client_id>/veiculos")
+def api_veiculos_cliente(client_id: int):
+    veiculos = dal.get_vehicles_by_client(client_id)
+    return jsonify(veiculos)
+
+
+@app.route("/clientes/<int:client_id>/veiculos/novo", methods=["POST"])
+def adicionar_veiculo(client_id: int):
+    if not dal.get_client_by_id(client_id):
+        flash("Cliente não encontrado.", "danger")
+        return redirect(url_for("clientes"))
+    marca  = request.form.get("marca",  "").strip()
+    modelo = request.form.get("modelo", "").strip()
+    ano    = request.form.get("ano",    "").strip()
+    placa  = request.form.get("placa",  "").strip()
+    cor    = request.form.get("cor",    "").strip()
+    obs    = request.form.get("observacoes", "").strip()
+    if not (marca or modelo or placa):
+        flash("Informe ao menos marca, modelo ou placa.", "warning")
+        return redirect(url_for("editar_cliente", client_id=client_id))
+    dal.add_vehicle({"id_cliente": client_id, "marca": marca, "modelo": modelo,
+                     "ano": ano, "placa": placa, "cor": cor, "observacoes": obs})
+    flash("Veículo adicionado com sucesso!", "success")
+    return redirect(url_for("editar_cliente", client_id=client_id))
+
+
+@app.route("/veiculos/<int:vehicle_id>/editar", methods=["POST"])
+def editar_veiculo(vehicle_id: int):
+    veiculo = dal.get_vehicle_by_id(vehicle_id)
+    if not veiculo:
+        flash("Veículo não encontrado.", "danger")
+        return redirect(url_for("clientes"))
+    dal.update_vehicle(vehicle_id, {
+        "marca":       request.form.get("marca",  "").strip(),
+        "modelo":      request.form.get("modelo", "").strip(),
+        "ano":         request.form.get("ano",    "").strip(),
+        "placa":       request.form.get("placa",  "").strip(),
+        "cor":         request.form.get("cor",    "").strip(),
+        "observacoes": request.form.get("observacoes", "").strip(),
+    })
+    flash("Veículo atualizado com sucesso!", "success")
+    return redirect(url_for("editar_cliente", client_id=veiculo["id_cliente"]))
+
+
+@app.route("/veiculos/<int:vehicle_id>/excluir", methods=["POST"])
+def excluir_veiculo(vehicle_id: int):
+    veiculo = dal.get_vehicle_by_id(vehicle_id)
+    if not veiculo:
+        flash("Veículo não encontrado.", "danger")
+        return redirect(url_for("clientes"))
+    client_id = veiculo["id_cliente"]
+    dal.delete_vehicle(vehicle_id)
+    flash("Veículo removido.", "info")
+    return redirect(url_for("editar_cliente", client_id=client_id))
 
 
 @app.route("/clientes/<int:client_id>/historico")
@@ -699,7 +815,7 @@ def _generate_whatsapp_text(
 
 
 
-def _generate_budget_pdf(budget: dict, client: dict, items: List[dict]) -> BytesIO:
+def _generate_budget_pdf(budget: dict, client: dict, items: List[dict], veiculo: Optional[dict] = None) -> BytesIO:
     """Gera o PDF de orçamento no layout do modelo fornecido."""
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=18)
@@ -861,6 +977,7 @@ def _generate_receipt_pdf(
     valor_final: float,
     data_conclusao: datetime,
     responsavel_execucao: str = "",
+    veiculo: Optional[dict] = None,
 ) -> BytesIO:
     """Gera um recibo baseado nos dados do orçamento e pagamento."""
     pdf = FPDF()
@@ -953,12 +1070,13 @@ def _generate_receipt_pdf(
             pdf.cell(col_w - label_w - 4, 5, _pdf_safe_text(value))
         pdf.ln(row_h)
 
-    carro_cor = budget.get("carro_cor") or client.get("carro_cor", "")
-    carro_km = budget.get("carro_km") or ""
+    v = veiculo or {}
+    carro_cor = budget.get("carro_cor") or v.get("cor", "")
+    carro_km  = budget.get("carro_km") or ""
 
-    row_two("CLIENTE", client.get("nome", ""), "VEICULO", client.get("carro_modelo", ""))
-    row_two("MARCA", client.get("carro_marca", ""), "PLACA", client.get("carro_placa", ""))
-    row_three("ANO", client.get("carro_ano", ""), "COR", carro_cor, "KM", carro_km)
+    row_two("CLIENTE", client.get("nome", ""), "VEICULO", v.get("modelo", ""))
+    row_two("MARCA", v.get("marca", ""), "PLACA", v.get("placa", ""))
+    row_three("ANO", v.get("ano", ""), "COR", carro_cor, "KM", carro_km)
 
     # Descrição principal.
     pdf.ln(8)
@@ -1034,6 +1152,21 @@ def _generate_payment_whatsapp_text(
     return "\n".join(linhas)
 
 
+def _load_vehicles_by_client(clients: list) -> dict:
+    """Monta dict {str(id_cliente): [veiculos]} incluindo fallback de campos legados."""
+    vmap = _build_vehicles_map()
+    result: dict = {}
+    for c in clients:
+        cid = c["id_cliente"]
+        veiculos = vmap.get(cid, [])
+        if not veiculos and (c.get("carro_marca") or c.get("carro_placa")):
+            veiculos = [{"id_veiculo": None, "id_cliente": cid,
+                         "marca": c.get("carro_marca", ""), "modelo": c.get("carro_modelo", ""),
+                         "ano": c.get("carro_ano", ""), "placa": c.get("carro_placa", "")}]
+        result[str(cid)] = veiculos
+    return result
+
+
 @app.route("/orcamentos/novo", methods=["GET", "POST"])
 def novo_orcamento():
     clients_df = dal.get_all_clients().fillna("")
@@ -1043,6 +1176,7 @@ def novo_orcamento():
         employees_df["ativo"] = True
     active_mask = ~employees_df["ativo"].astype(str).str.lower().isin({"false", "0", "nao", "não"})
     employees = employees_df[active_mask].fillna("").to_dict(orient="records")
+    vehicles_by_client = _load_vehicles_by_client(clients)
 
     if request.method == "POST":
         client_id = int(request.form.get("id_cliente"))
@@ -1050,6 +1184,14 @@ def novo_orcamento():
         if not client:
             flash("Cliente informado não existe.", "danger")
             return redirect(url_for("novo_orcamento"))
+
+        id_veiculo_raw = request.form.get("id_veiculo", "").strip()
+        id_veiculo = None
+        if id_veiculo_raw and id_veiculo_raw.lower() not in ("", "none", "null"):
+            try:
+                id_veiculo = int(id_veiculo_raw)
+            except (TypeError, ValueError):
+                pass
 
         payment_method = request.form.get("forma_pagamento", "PIX")
         if payment_method not in PAYMENT_OPTIONS:
@@ -1067,7 +1209,7 @@ def novo_orcamento():
             if emp:
                 responsavel_nome = emp.get("nome", "")
 
-        carro_km = request.form.get("carro_km", "").strip()
+        carro_km  = request.form.get("carro_km",  "").strip()
         carro_cor = request.form.get("carro_cor", "").strip()
 
         items = _build_budget_items_from_form(request.form)
@@ -1082,19 +1224,20 @@ def novo_orcamento():
         )
 
         data = {
-            "id_cliente": client_id,
-            "data_criacao": datetime.today().strftime("%Y-%m-%d"),
-            "status": "Em análise",
-            "carro_km": carro_km,
-            "carro_cor": carro_cor,
-            "responsavel_planejado_id": responsavel_id or "",
+            "id_cliente":                client_id,
+            "id_veiculo":                id_veiculo,
+            "data_criacao":              datetime.today().strftime("%Y-%m-%d"),
+            "status":                    "Em análise",
+            "carro_km":                  carro_km,
+            "carro_cor":                 carro_cor,
+            "responsavel_planejado_id":  responsavel_id or "",
             "responsavel_planejado_nome": responsavel_nome,
-            "itens": json.dumps(items, ensure_ascii=False),
-            "valor_total": total,
-            "texto_whatsapp": texto_whatsapp,
-            "data_aprovacao": "",
-            "data_conclusao": "",
-            "forma_pagamento": payment_method,
+            "itens":                     json.dumps(items, ensure_ascii=False),
+            "valor_total":               total,
+            "texto_whatsapp":            texto_whatsapp,
+            "data_aprovacao":            "",
+            "data_conclusao":            "",
+            "forma_pagamento":           payment_method,
         }
         new_id = dal.add_budget(data)
         flash("Orçamento criado com sucesso!", "success")
@@ -1115,6 +1258,7 @@ def novo_orcamento():
         clients=clients,
         payment_options=PAYMENT_OPTIONS,
         employees=employees,
+        vehicles_by_client=vehicles_by_client,
     )
 
 
@@ -1143,6 +1287,7 @@ def detalhes_orcamento(budget_id: int):
         return redirect(url_for("listar_orcamentos"))
 
     client = dal.get_client_by_id(int(budget["id_cliente"]))
+    veiculo = _get_veiculo_for_orcamento(budget, client or {})
     items = dal.parse_budget_items(budget["itens"])
     base_total = sum(float(item.get("subtotal", item.get("quantidade", 0) * item.get("valor_unitario", 0)) or 0) for item in items)
     forma_pagamento = budget.get("forma_pagamento") or "PIX"
@@ -1156,6 +1301,7 @@ def detalhes_orcamento(budget_id: int):
         "detalhes_orcamento.html",
         budget=budget,
         client=client,
+        veiculo=veiculo,
         items=items,
         base_total=base_total,
         final_total=final_total,
@@ -1198,6 +1344,8 @@ def editar_orcamento(budget_id: int):
     active_mask = ~employees_df["ativo"].astype(str).str.lower().isin({"false", "0", "nao", "não"})
     employees = employees_df[active_mask].fillna("").to_dict(orient="records")
 
+    vehicles_by_client = _load_vehicles_by_client(clients)
+
     if request.method == "POST":
         client_id = int(request.form.get("id_cliente"))
         client = dal.get_client_by_id(client_id)
@@ -1205,11 +1353,19 @@ def editar_orcamento(budget_id: int):
             flash("Cliente selecionado não existe.", "danger")
             return redirect(url_for("editar_orcamento", budget_id=budget_id))
 
+        id_veiculo_raw = request.form.get("id_veiculo", "").strip()
+        id_veiculo = None
+        if id_veiculo_raw and id_veiculo_raw.lower() not in ("", "none", "null"):
+            try:
+                id_veiculo = int(id_veiculo_raw)
+            except (TypeError, ValueError):
+                pass
+
         payment_method = request.form.get("forma_pagamento", current_payment)
         if payment_method not in PAYMENT_OPTIONS:
             payment_method = "PIX"
 
-        carro_km = request.form.get("carro_km", "").strip()
+        carro_km  = request.form.get("carro_km",  "").strip()
         carro_cor = request.form.get("carro_cor", "").strip()
         responsavel_raw = request.form.get("responsavel_execucao", "").strip()
         responsavel_id = None
@@ -1237,15 +1393,16 @@ def editar_orcamento(budget_id: int):
         dal.update_budget(
             budget_id,
             {
-                "id_cliente": client_id,
-                "carro_km": carro_km,
-                "carro_cor": carro_cor,
-                "responsavel_planejado_id": responsavel_id or "",
+                "id_cliente":                client_id,
+                "id_veiculo":                id_veiculo,
+                "carro_km":                  carro_km,
+                "carro_cor":                 carro_cor,
+                "responsavel_planejado_id":  responsavel_id or "",
                 "responsavel_planejado_nome": responsavel_nome,
-                "itens": json.dumps(updated_items, ensure_ascii=False),
-                "valor_total": total,
-                "texto_whatsapp": texto_whatsapp,
-                "forma_pagamento": payment_method,
+                "itens":                     json.dumps(updated_items, ensure_ascii=False),
+                "valor_total":               total,
+                "texto_whatsapp":            texto_whatsapp,
+                "forma_pagamento":           payment_method,
             },
         )
 
@@ -1262,6 +1419,7 @@ def editar_orcamento(budget_id: int):
         base_total=base_total,
         final_total=final_total,
         employees=employees,
+        vehicles_by_client=vehicles_by_client,
         responsavel_planejado_id=budget.get("responsavel_planejado_id"),
         responsavel_planejado_nome=budget.get("responsavel_planejado_nome"),
     )
@@ -1280,7 +1438,8 @@ def gerar_pdf_orcamento(budget_id: int):
         return redirect(url_for("listar_orcamentos"))
 
     items = dal.parse_budget_items(budget["itens"])
-    pdf_buffer = _generate_budget_pdf(budget, client, items)
+    veiculo = _get_veiculo_for_orcamento(budget, client)
+    pdf_buffer = _generate_budget_pdf(budget, client, items, veiculo=veiculo)
     filename = f"orcamento_{budget_id}.pdf"
     pdf_buffer.seek(0)
     return send_file(
@@ -1327,6 +1486,7 @@ def gerar_recibo(budget_id: int):
     if not responsavel_receipt:
         responsavel_receipt = budget.get("responsavel_planejado_nome", "")
 
+    veiculo = _get_veiculo_for_orcamento(budget, client)
     pdf_buffer = _generate_receipt_pdf(
         budget_id=budget_id,
         budget=budget,
@@ -1335,6 +1495,7 @@ def gerar_recibo(budget_id: int):
         valor_final=valor_final,
         data_conclusao=data_conclusao,
         responsavel_execucao=responsavel_receipt,
+        veiculo=veiculo,
     )
     filename = f"recibo_{budget_id}_{_slugify_filename(client.get('nome', ''))}.pdf"
     pdf_buffer.seek(0)
