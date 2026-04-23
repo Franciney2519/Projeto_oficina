@@ -134,8 +134,8 @@ COMPANY_INFO = {
 def inject_company_info():
     """Disponibiliza dados da empresa para todos os templates."""
     return {"company_info": COMPANY_INFO}
-LOGO_SOURCE_PATH = os.path.join(PROJECT_DIR, "icone.ico")
-LOGO_CACHE_PATH = os.path.join(PROJECT_DIR, "__logo_cache.png")
+LOGO_SOURCE_PATH = os.path.join(PROJECT_DIR, "static", "logo.png")
+LOGO_CACHE_PATH = os.path.join(PROJECT_DIR, "static", "logo.png")
 VALIDADE_PADRAO = "5 dias corridos"
 OBSERVACOES_PADRAO = (
     "Valores sujeitos a alteração após o período de validade. "
@@ -224,12 +224,11 @@ dal.ensure_all_files_exist()
 
 @app.route("/favicon.ico")
 def favicon():
-    """Serve o ícone do aplicativo para uso na interface e na aba do navegador."""
-    icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icone.ico")
-    if not os.path.exists(icon_path):
-        # Evita erro caso o arquivo tenha sido removido; retorna 404 padrão.
+    """Serve a logo do aplicativo para uso na interface e na aba do navegador."""
+    logo_path = os.path.join(PROJECT_DIR, "static", "logo.png")
+    if not os.path.exists(logo_path):
         return ("", 404)
-    return send_file(icon_path, mimetype="image/x-icon")
+    return send_file(logo_path, mimetype="image/png")
 
 
 @app.route("/atualizar-base", methods=["POST"])
