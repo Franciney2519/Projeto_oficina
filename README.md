@@ -86,6 +86,18 @@ As tabelas são criadas automaticamente na primeira execução via `init_db()` e
 
 ---
 
+## Segurança (Supabase RLS)
+
+Se o advisor do Supabase exportar erros `rls_disabled_in_public`, use:
+
+```bash
+python exportar_seguranca_supabase.py --csv "c:\caminho\Supabase Performance Security Lints (...).csv" --out supabase_security_hardening.sql
+```
+
+Depois execute o arquivo `supabase_security_hardening.sql` no SQL Editor do Supabase.
+
+---
+
 ## Implantação (Railway / Render)
 
 Configure as variáveis de ambiente na plataforma. O `Procfile` já está configurado para Gunicorn:
