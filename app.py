@@ -249,6 +249,22 @@ def _parse_date(date_str: str) -> datetime:
     return datetime.strptime(date_str, "%Y-%m-%d")
 
 
+def _parse_brl_number(raw_value: str) -> float:
+    """Converte valor monetário em formato pt-BR/en para float (ex.: 1.234,56 ou 1234.56)."""
+    value = (raw_value or "").strip()
+    if not value:
+        return 0.0
+
+    if "," in value and "." in value:
+        # Assume formato pt-BR com separador de milhar.
+        value = value.replace(".", "").replace(",", ".")
+    elif "," in value:
+        # Formato com vírgula decimal.
+        value = value.replace(",", ".")
+
+    return float(value)
+
+
 def _normalize_status(value: str) -> str:
     """Remove acentos e padroniza para facilitar comparações de status."""
     if not value:
@@ -1653,7 +1669,11 @@ def financeiro():
         tipo_despesa = request.form.get("tipo_despesa")
         categoria = request.form.get("categoria")
         descricao = request.form.get("descricao")
-        valor = float(request.form.get("valor", "0") or 0)
+        try:
+            valor = _parse_brl_number(request.form.get("valor", "0"))
+        except ValueError:
+            flash("Valor inválido. Use apenas números (ex.: 278,00).", "danger")
+            return redirect(url_for("financeiro"))
 
         if tipo_despesa not in FINANCE_EXPENSE_TYPES:
             flash("Selecione um tipo de despesa válido.", "danger")
@@ -1662,17 +1682,23 @@ def financeiro():
             flash("Selecione uma categoria correspondente ao tipo escolhido.", "danger")
             return redirect(url_for("financeiro"))
 
-        dal.add_financial_entry(
-            {
-                "data": _parse_date(data).strftime("%Y-%m-%d"),
-                "tipo_lancamento": "Saída",
-                "categoria": f"{tipo_despesa} - {categoria}",
-                "descricao": descricao,
-                "valor": valor,
-                "relacionado_orcamento_id": "",
-                "relacionado_servico_id": "",
-            }
-        )
+        try:
+            dal.add_financial_entry(
+                {
+                    "data": _parse_date(data).strftime("%Y-%m-%d"),
+                    "tipo_lancamento": "Saída",
+                    "categoria": f"{tipo_despesa} - {categoria}",
+                    "descricao": descricao,
+                    "valor": valor,
+                    "relacionado_orcamento_id": "",
+                    "relacionado_servico_id": "",
+                }
+            )
+        except Exception:
+            app.logger.exception("Erro ao salvar despesa no financeiro.")
+            flash("Não foi possível salvar a despesa. Verifique as configurações do banco e tente novamente.", "danger")
+            return redirect(url_for("financeiro"))
+
         flash("Despesa registrada com sucesso.", "success")
         return redirect(url_for("financeiro"))
 
