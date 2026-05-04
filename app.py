@@ -535,6 +535,9 @@ def _get_veiculo_for_orcamento(budget: dict, client: dict) -> dict:
 def clientes():
     if request.method == "POST":
         payload = {field: request.form.get(field, "").strip() for field in CLIENT_FIELDS}
+        if not payload.get("nome"):
+            flash("Informe o nome do cliente para realizar o cadastro.", "danger")
+            return redirect(url_for("clientes"))
         # Mantém campos legados vazios para compatibilidade
         payload.update({"carro_marca": "", "carro_modelo": "", "carro_ano": "", "carro_placa": ""})
         client_id = dal.add_client(payload)

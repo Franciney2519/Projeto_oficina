@@ -63,7 +63,7 @@
           ] %}
             <div class="mb-2">
               <label class="form-label">{{ label }}</label>
-              <input type="text" name="{{ field }}" class="form-control">
+              <input type="text" name="{{ field }}" class="form-control" {% if field == 'nome' %}required{% endif %}>
             </div>
           {% endfor %}
 
