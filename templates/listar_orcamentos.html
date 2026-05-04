@@ -25,7 +25,12 @@
           <td>{{ orcamento.nome or 'Cliente removido' }}</td>
           <td>{{ orcamento.data_criacao }}</td>
           <td>
-            <span class="badge bg-{{ 'success' if orcamento.is_finalizado else 'warning' }}">{{ orcamento.status }}</span>
+            {% set status_l = (orcamento.status or '')|lower %}
+            <span class="badge bg-{{
+              'danger' if 'reprovado' in status_l
+              else 'success' if orcamento.is_finalizado
+              else 'warning'
+            }}">{{ orcamento.status }}</span>
           </td>
           <td>R$ {{ '%.2f'|format(orcamento.valor_total or 0) }}</td>
           <td>
