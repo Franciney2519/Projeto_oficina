@@ -1,131 +1,123 @@
-# Oficina Mecânica — R R A AUTOS
+# Oficina Mecanica - R R A AUTOS
 
-Aplicação web em Flask para gestão completa de uma oficina mecânica: clientes, veículos, orçamentos, serviços, financeiro e funcionários. Usa PostgreSQL (Supabase) como banco de dados e pode ser implantado em Railway, Render ou qualquer plataforma compatível com Python + Gunicorn.
-
----
+Aplicacao web em Flask para gestao de oficina mecanica: clientes, veiculos, orcamentos, servicos, financeiro e funcionarios.  
+Banco de dados: PostgreSQL (Supabase).
 
 ## Funcionalidades
 
-- **Clientes e veículos**: cadastro de clientes com múltiplos veículos (marca, modelo, ano, placa, cor). Veículos podem ser adicionados, editados e removidos individualmente.
-- **Orçamentos**: criação com seleção de cliente e veículo específico, adição dinâmica de itens (produto/serviço/outros), cálculo automático com taxa de 3% para cartão de crédito.
-- **Fluxo de orçamento**:
-  - `Em análise` → `Aprovado` (aguarda execução, sem lançamento financeiro) → `Concluído` (gera serviços + entrada no financeiro + comprovante)
-  - Ou diretamente `Reprovado`
-- **PDF e WhatsApp**: geração de PDF de orçamento e recibo; texto pronto para envio via WhatsApp.
-- **Financeiro**: lançamentos de entrada e saída, com geração automática ao concluir orçamentos.
-- **Dashboard**: cartões com KPIs do mês (clientes, orçamentos em aberto, saldo) e gráfico de barras dos últimos 12 meses (entradas, saídas, saldo).
-- **Funcionários**: cadastro com ativação/desativação.
+- Clientes com multiplos veiculos.
+- Edicao de cliente, inclusao/edicao/exclusao de veiculos.
+- Migracao de veiculo legado para veiculo editavel.
+- Orcamentos com itens dinamicos e forma de pagamento.
+- Taxa de 3% em Cartao Credito.
+- PDF de orcamento e recibo.
+- Texto pronto para WhatsApp.
+- Financeiro com entradas/saidas.
+- Dashboard com saldo por periodo e grafico dos ultimos 12 meses.
 
----
+## Regras de negocio importantes
+
+- Entrada no financeiro e criada quando o orcamento e concluido/efetivado.
+- Orcamento apenas aprovado (sem conclusao) nao gera entrada no saldo.
+- Sistema evita duplicidade na efetivacao:
+  - nao duplica servicos do mesmo orcamento;
+  - nao duplica entrada financeira do mesmo orcamento.
+- Orcamento finalizado pode ser editado para correcao de preenchimento.
+- Orcamentos reprovados aparecem com destaque visual em vermelho na listagem.
+- Cadastro de cliente sem nome e bloqueado.
+
+## Fluxo de status de orcamento
+
+- Em analise -> Aprovado -> Concluido
+- Em analise -> Reprovado
+
+Obs.: no estado Concluido, o sistema registra execucao de servico e entrada no financeiro.
 
 ## Requisitos
 
 - Python 3.10+
-- PostgreSQL (Supabase ou outro)
-- Dependências: `flask`, `pandas`, `psycopg2-binary`, `fpdf2`, `gunicorn`, `python-dotenv`, `pillow` (opcional)
+- PostgreSQL
 
----
+Dependencias principais:
 
-## Configuração local
+- flask
+- pandas
+- psycopg2-binary
+- fpdf2
+- gunicorn
+- python-dotenv
+- pillow (opcional)
+
+## Configuracao local
 
 ```bash
 python -m venv .venv
-.venv\Scripts\activate        # Windows
-# source .venv/bin/activate   # Linux/Mac
+.venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-Crie um arquivo `.env` na raiz:
+Crie `.env` na raiz:
 
-```
+```env
 DATABASE_URL=postgresql://usuario:senha@host:5432/postgres
 SECRET_KEY=sua-chave-secreta
 APP_USERNAME=admin
 APP_PASSWORD=sua-senha
 ```
 
-Inicie:
+Rodar:
 
 ```bash
 python app.py
 ```
 
-A aplicação abre em `http://127.0.0.1:5000/`.
+## Variaveis de ambiente
 
----
-
-## Variáveis de ambiente
-
-| Variável | Padrão | Descrição |
+| Variavel | Padrao | Descricao |
 |---|---|---|
-| `DATABASE_URL` | — | Connection string PostgreSQL (obrigatória) |
-| `SECRET_KEY` | `oficina-mecanica-secret-dev` | Chave de sessão Flask |
-| `APP_USERNAME` | `admin` | Usuário do login |
-| `APP_PASSWORD` | `oficina123` | Senha do login |
-
----
+| `DATABASE_URL` | - | String de conexao PostgreSQL (obrigatoria) |
+| `SECRET_KEY` | `oficina-mecanica-secret-dev` | Chave de sessao Flask |
+| `APP_USERNAME` | `admin` | Usuario de login |
+| `APP_PASSWORD` | `oficina123` | Senha de login |
 
 ## Banco de dados
 
-As tabelas são criadas automaticamente na primeira execução via `init_db()` em `data_access.py`. Ao inicializar, o sistema também:
+Tabelas principais:
 
-- Cria a tabela `veiculos` (separada de `clientes`)
-- Adiciona a coluna `id_veiculo` em `orcamentos` (se não existir)
-- Migra automaticamente os dados de carro já presentes nos registros de clientes para a nova tabela `veiculos`
+- `clientes`
+- `veiculos`
+- `orcamentos`
+- `servicos`
+- `financeiro`
+- `funcionarios`
 
-### Tabelas
+As tabelas sao criadas/ajustadas na inicializacao via `data_access.py`.
 
-| Tabela | Descrição |
-|---|---|
-| `clientes` | Dados pessoais e de endereço |
-| `veiculos` | Veículos por cliente (múltiplos por cliente) |
-| `orcamentos` | Orçamentos com vínculo a cliente e veículo |
-| `servicos` | Serviços executados (gerados ao concluir orçamento) |
-| `financeiro` | Lançamentos financeiros |
-| `funcionarios` | Funcionários da oficina |
+## Seguranca Supabase (RLS)
 
----
-
-## Segurança (Supabase RLS)
-
-Se o advisor do Supabase exportar erros `rls_disabled_in_public`, use:
+Quando necessario, gere SQL de hardening com:
 
 ```bash
-python exportar_seguranca_supabase.py --csv "c:\caminho\Supabase Performance Security Lints (...).csv" --out supabase_security_hardening.sql
+python exportar_seguranca_supabase.py --csv "c:\caminho\arquivo.csv" --out supabase_security_hardening.sql
 ```
 
-Depois execute o arquivo `supabase_security_hardening.sql` no SQL Editor do Supabase.
+Depois execute o SQL no Supabase SQL Editor.
 
----
+## Deploy
 
-## Implantação (Railway / Render)
+`Procfile`:
 
-Configure as variáveis de ambiente na plataforma. O `Procfile` já está configurado para Gunicorn:
-
-```
+```txt
 web: gunicorn app:app
 ```
 
-O `ProxyFix` já está ativado para reconhecer HTTPS atrás do proxy da plataforma.
+`ProxyFix` ja esta habilitado para ambiente com proxy (Railway/Render).
 
----
+## Estrutura
 
-## Estrutura principal
-
+```txt
+app.py
+data_access.py
+templates/
+static/
 ```
-app.py            — Rotas Flask, lógica de negócio, geração de PDFs
-data_access.py    — CRUD no PostgreSQL (psycopg2)
-templates/        — HTML com Bootstrap 5 + Chart.js
-static/           — Arquivos estáticos (logo, CSS adicional)
-```
-
----
-
-## Configurações de negócio
-
-No topo de `app.py`:
-
-- `COMPANY_INFO` — razão social, CNPJ, endereço e telefone usados nos PDFs
-- `PAYMENT_OPTIONS` — formas de pagamento disponíveis
-- `_calculate_total_with_payment` — lógica de taxa (atualmente 3% para cartão de crédito)
-- `VALIDADE_PADRAO` / `OBSERVACOES_PADRAO` — textos padrão no PDF de orçamento
