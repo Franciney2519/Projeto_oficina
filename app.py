@@ -1346,7 +1346,8 @@ def listar_orcamentos():
         is_finalizado = _is_budget_finalized(status)
         orcamento["is_finalizado"] = is_finalizado
         orcamento["can_efetivar"] = not is_finalizado
-        orcamento["can_editar"] = not is_finalizado
+        # Edição permanece permitida mesmo após efetivação para correções cadastrais.
+        orcamento["can_editar"] = True
         orcamento["can_reprovar"] = not is_finalizado
     return render_template("listar_orcamentos.html", orcamentos=orcamentos)
 
@@ -1380,7 +1381,8 @@ def detalhes_orcamento(budget_id: int):
         taxa=taxa,
         forma_pagamento=forma_pagamento,
         can_efetivar=not is_finalizado,
-        can_edit=not is_finalizado,
+        # Edição permanece permitida mesmo após efetivação para correções cadastrais.
+        can_edit=True,
         can_reprovar=not is_finalizado,
         can_recibo=is_finalizado,
     )
