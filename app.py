@@ -876,6 +876,7 @@ def _generate_whatsapp_text(
     payment_method: str,
     taxa: float,
 ) -> str:
+    base_total = sum(float(item.get("subtotal", 0) or 0) for item in items)
     linhas = [
         f"Olá {client_name}, tudo bem?",
         f"Segue abaixo o orçamento detalhado da oficina {COMPANY_INFO['razao_social']}:",
@@ -885,12 +886,20 @@ def _generate_whatsapp_text(
         linhas.append(
             f"- {item['descricao']} ({item['quantidade']}x R$ {item['valor_unitario']:.2f}) = R$ {item['subtotal']:.2f}"
         )
+    linhas.extend(["", f"Forma de pagamento: {payment_method}"])
+    if taxa > 0:
+        linhas.extend(
+            [
+                f"Valor dos itens (sem taxa): {dal.format_currency(base_total)}",
+                f"Taxa cartão de crédito (3%): {dal.format_currency(taxa)}",
+                f"Valor final a pagar: {dal.format_currency(total)}",
+            ]
+        )
+    else:
+        linhas.append(f"Valor total: {dal.format_currency(total)}")
+
     linhas.extend(
         [
-            "",
-            f"Forma de pagamento: {payment_method}",
-            f"Valor total: R$ {total:.2f}"
-            + (" (inclui taxa de cartão de crédito)" if taxa > 0 else ""),
             "Validade do orçamento: 5 dias corridos.",
             "Prazo estimado para execução: conforme disponibilidade na agenda.",
             "Qualquer dúvida é só me chamar!",
@@ -945,6 +954,7 @@ def _generate_budget_pdf(budget: dict, client: dict, items: List[dict], veiculo:
     base_total = sum(float(item.get("subtotal", 0) or 0) for item in items)
     forma_pagamento = budget.get("forma_pagamento") or "PIX"
     final_total = float(budget.get("valor_total", base_total) or base_total)
+    taxa_pagamento = max(0.0, round(final_total - base_total, 2))
 
     # Barra de dados da loja.
     pdf.ln(6)
@@ -1021,6 +1031,15 @@ def _generate_budget_pdf(budget: dict, client: dict, items: List[dict], veiculo:
     pdf.cell(sum(width for _, width in headers[:-1]), 9, "TOTAL:", border=1, align="R", fill=True)
     pdf.cell(headers[-1][1], 9, dal.format_currency(final_total), border=1, align="C", fill=True)
     pdf.ln(12)
+
+    pdf.set_text_color(*text_gray)
+    pdf.set_font("Arial", "", 11)
+    pdf.cell(0, 6, _pdf_safe_text(f"Forma de pagamento: {forma_pagamento}"), ln=1)
+    if taxa_pagamento > 0:
+        pdf.cell(0, 6, _pdf_safe_text(f"Valor dos itens (sem taxa): {dal.format_currency(base_total)}"), ln=1)
+        pdf.cell(0, 6, _pdf_safe_text(f"Taxa cartão de crédito (3%): {dal.format_currency(taxa_pagamento)}"), ln=1)
+        pdf.cell(0, 6, _pdf_safe_text(f"Valor final a pagar: {dal.format_currency(final_total)}"), ln=1)
+        pdf.ln(4)
 
     # Informações complementares.
     pdf.set_text_color(*dark_blue)
