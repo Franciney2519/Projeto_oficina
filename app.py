@@ -586,11 +586,68 @@ def editar_cliente(client_id: int):
         return redirect(url_for("clientes"))
 
     veiculos = dal.get_vehicles_by_client(client_id)
-    if not veiculos and (client.get("carro_marca") or client.get("carro_placa")):
-        veiculos = [{"id_veiculo": None, "marca": client.get("carro_marca", ""),
-                     "modelo": client.get("carro_modelo", ""), "ano": client.get("carro_ano", ""),
-                     "placa": client.get("carro_placa", ""), "observacoes": ""}]
-    return render_template("editar_cliente.html", client=client, veiculos=veiculos)
+    legacy_vehicle = None
+    if not veiculos and (client.get("carro_marca") or client.get("carro_modelo") or client.get("carro_placa")):
+        legacy_vehicle = {
+            "marca": client.get("carro_marca", ""),
+            "modelo": client.get("carro_modelo", ""),
+            "ano": client.get("carro_ano", ""),
+            "placa": client.get("carro_placa", ""),
+            "cor": "",
+            "observacoes": "",
+        }
+
+    return render_template(
+        "editar_cliente.html",
+        client=client,
+        veiculos=veiculos,
+        legacy_vehicle=legacy_vehicle,
+    )
+
+
+@app.route("/clientes/<int:client_id>/veiculos/migrar-legado", methods=["POST"])
+def migrar_veiculo_legado(client_id: int):
+    client = dal.get_client_by_id(client_id)
+    if not client:
+        flash("Cliente não encontrado.", "danger")
+        return redirect(url_for("clientes"))
+
+    marca = request.form.get("marca", "").strip()
+    modelo = request.form.get("modelo", "").strip()
+    ano = request.form.get("ano", "").strip()
+    placa = request.form.get("placa", "").strip()
+    cor = request.form.get("cor", "").strip()
+    observacoes = request.form.get("observacoes", "").strip()
+
+    if not (marca or modelo or placa):
+        flash("Não há dados de veículo legado para migrar.", "warning")
+        return redirect(url_for("editar_cliente", client_id=client_id))
+
+    dal.add_vehicle(
+        {
+            "id_cliente": client_id,
+            "marca": marca,
+            "modelo": modelo,
+            "ano": ano,
+            "placa": placa,
+            "cor": cor,
+            "observacoes": observacoes,
+        }
+    )
+
+    # Limpa os campos legados para evitar duplicidade visual.
+    dal.update_client(
+        client_id,
+        {
+            "carro_marca": "",
+            "carro_modelo": "",
+            "carro_ano": "",
+            "carro_placa": "",
+        },
+    )
+
+    flash("Veículo legado convertido com sucesso. Agora ele pode ser editado ou removido.", "success")
+    return redirect(url_for("editar_cliente", client_id=client_id))
 
 
 @app.route("/api/clientes/<int:client_id>/veiculos")
