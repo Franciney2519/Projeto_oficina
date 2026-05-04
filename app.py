@@ -403,10 +403,20 @@ def dashboard():
     services_df = dal.get_all_services()
 
     total_clients = len(clients_df)
-    open_budgets = budgets_df[budgets_df["status"] != "Concluído"]
-    total_open_budgets = len(open_budgets)
+    if not budgets_df.empty and "status" in budgets_df.columns:
+        status_norm = budgets_df["status"].fillna("").astype(str).apply(_normalize_status)
+        open_mask = (~status_norm.isin(FINALIZED_BUDGET_STATUSES)) & (status_norm != "reprovado")
+        total_open_budgets = int(open_mask.sum())
+    else:
+        total_open_budgets = 0
 
     financial_df["data"] = pd.to_datetime(financial_df["data"], errors="coerce")
+    if "tipo_lancamento" not in financial_df.columns:
+        financial_df["tipo_lancamento"] = ""
+    financial_df["tipo_lancamento_norm"] = (
+        financial_df["tipo_lancamento"].fillna("").astype(str).apply(_normalize_status)
+    )
+    financial_df["valor"] = pd.to_numeric(financial_df.get("valor"), errors="coerce").fillna(0)
     today = datetime.today()
     selected_month = today.month
     selected_year = today.year
@@ -427,8 +437,8 @@ def dashboard():
         (financial_df["data"].dt.month == selected_month)
         & (financial_df["data"].dt.year == selected_year)
     ]
-    entradas = filtered_financial[filtered_financial["tipo_lancamento"] == "Entrada"]["valor"].sum()
-    saidas = filtered_financial[filtered_financial["tipo_lancamento"] == "Saída"]["valor"].sum()
+    entradas = filtered_financial[filtered_financial["tipo_lancamento_norm"] == "entrada"]["valor"].sum()
+    saidas = filtered_financial[filtered_financial["tipo_lancamento_norm"] == "saida"]["valor"].sum()
 
     available_years = set(financial_df["data"].dropna().dt.year.tolist()) if not financial_df.empty else set()
     available_years.add(today.year)
@@ -445,8 +455,8 @@ def dashboard():
             financial_df["data"].dt.year == month_start.year
         )
         month_df = financial_df[mask]
-        entradas_mes = month_df[month_df["tipo_lancamento"] == "Entrada"]["valor"].sum()
-        saidas_mes = month_df[month_df["tipo_lancamento"] == "Saída"]["valor"].sum()
+        entradas_mes = month_df[month_df["tipo_lancamento_norm"] == "entrada"]["valor"].sum()
+        saidas_mes = month_df[month_df["tipo_lancamento_norm"] == "saida"]["valor"].sum()
         chart_labels.append(month_start.strftime("%b/%Y"))
         chart_entradas.append(round(float(entradas_mes or 0), 2))
         chart_saidas.append(round(float(saidas_mes or 0), 2))
@@ -1673,31 +1683,52 @@ def efetivar_orcamento(budget_id: int):
             )
             return redirect(url_for("detalhes_orcamento", budget_id=budget_id))
 
-        for item in items:
-            dal.add_service(
+        existing_services_df = dal.get_all_services()
+        budget_has_services = (
+            not existing_services_df.empty
+            and "id_orcamento" in existing_services_df.columns
+            and (existing_services_df["id_orcamento"] == budget_id).any()
+        )
+        if not budget_has_services:
+            for item in items:
+                dal.add_service(
+                    {
+                        "id_orcamento": budget_id,
+                        "id_cliente": budget["id_cliente"],
+                        "data_execucao": data_status.strftime("%Y-%m-%d"),
+                        "descricao_servico": item.get("descricao"),
+                        "tipo_servico": item.get("tipo"),
+                        "valor": item.get("subtotal"),
+                        "observacoes": "",
+                        "responsavel": responsavel_execucao,
+                    }
+                )
+        else:
+            app.logger.warning("Serviços já existentes para orçamento %s; inserção duplicada evitada.", budget_id)
+
+        existing_financial_df = dal.get_all_financial_entries()
+        budget_has_financial_entry = False
+        if not existing_financial_df.empty:
+            normalized_types = existing_financial_df["tipo_lancamento"].fillna("").astype(str).apply(_normalize_status)
+            related_budget = pd.to_numeric(
+                existing_financial_df.get("relacionado_orcamento_id"), errors="coerce"
+            )
+            budget_has_financial_entry = ((normalized_types == "entrada") & (related_budget == budget_id)).any()
+
+        if not budget_has_financial_entry:
+            dal.add_financial_entry(
                 {
-                    "id_orcamento": budget_id,
-                    "id_cliente": budget["id_cliente"],
-                    "data_execucao": data_status.strftime("%Y-%m-%d"),
-                    "descricao_servico": item.get("descricao"),
-                    "tipo_servico": item.get("tipo"),
-                    "valor": item.get("subtotal"),
-                    "observacoes": "",
-                    "responsavel": responsavel_execucao,
+                    "data": data_status.strftime("%Y-%m-%d"),
+                    "tipo_lancamento": "Entrada",
+                    "categoria": "Serviço Oficina",
+                    "descricao": f"Orçamento #{budget_id} - {client['nome']}",
+                    "valor": valor_final,
+                    "relacionado_orcamento_id": budget_id,
+                    "relacionado_servico_id": "",
                 }
             )
-
-        dal.add_financial_entry(
-            {
-                "data": data_status.strftime("%Y-%m-%d"),
-                "tipo_lancamento": "Entrada",
-                "categoria": "Serviço Oficina",
-                "descricao": f"Orçamento #{budget_id} - {client['nome']}",
-                "valor": valor_final,
-                "relacionado_orcamento_id": budget_id,
-                "relacionado_servico_id": "",
-            }
-        )
+        else:
+            app.logger.warning("Lançamento financeiro já existente para orçamento %s; inserção duplicada evitada.", budget_id)
 
         pagamento_texto_whatsapp = _generate_payment_whatsapp_text(
             client.get("nome", "cliente"), budget_id, valor_final, data_status
