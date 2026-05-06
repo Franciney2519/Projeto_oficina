@@ -1173,16 +1173,20 @@ def historico_servicos():
 
     services_df = services_df.sort_values("data_execucao", ascending=False)
     services = []
-    for row in services_df.to_dict(orient="records"):
+    for row in services_df.fillna("").to_dict(orient="records"):
         services.append(
             {
-                "client_id": row.get("id_cliente"),
-                "client_name": row.get("nome") or "N/D",
-                "budget_id": row.get("id_orcamento"),
-                "service_date": _format_date(row.get("data_execucao")),
-                "service_type": row.get("tipo_servico"),
+                "id_servico":    row.get("id_servico"),
+                "client_id":     row.get("id_cliente"),
+                "client_name":   row.get("nome") or "N/D",
+                "budget_id":     row.get("id_orcamento"),
+                "service_date":  _format_date(row.get("data_execucao")),
+                "service_type":  row.get("tipo_servico") or "-",
                 "service_value": row.get("valor") or 0,
-                "status": row.get("status") or "Sem status",
+                "status":        row.get("status") or "Sem status",
+                "descricao":     row.get("descricao_servico") or "-",
+                "responsavel":   row.get("responsavel") or "-",
+                "observacoes":   row.get("observacoes") or "-",
             }
         )
 

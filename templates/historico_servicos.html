@@ -30,7 +30,7 @@
 <div class="card">
   <div class="card-body">
     <div class="table-responsive">
-      <table class="table table-striped">
+      <table class="table table-striped align-middle">
         <thead>
           <tr>
             <th>ID Cliente</th>
@@ -40,26 +40,45 @@
             <th>Tipo de Serviço</th>
             <th>Valor</th>
             <th>Status</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
-          {% for servico in services %}
+          {% for s in services %}
             <tr>
-              <td>{{ servico.client_id }}</td>
-              <td>{{ servico.client_name }}</td>
-              <td>{{ servico.budget_id or '-' }}</td>
-              <td>{{ servico.service_date }}</td>
-              <td>{{ servico.service_type }}</td>
-              <td>R$ {{ '%.2f'|format(servico.service_value or 0) }}</td>
+              <td>{{ s.client_id }}</td>
+              <td>{{ s.client_name }}</td>
+              <td>{{ s.budget_id or '-' }}</td>
+              <td>{{ s.service_date }}</td>
+              <td>{{ s.service_type }}</td>
+              <td>{{ s.service_value | brl }}</td>
               <td>
-                <span class="badge bg-{{ 'success' if servico.status and servico.status|lower == 'finalizado' else 'secondary' }}">
-                  {{ servico.status }}
+                {% set status_lower = (s.status or '') | lower %}
+                <span class="badge bg-{{ 'success' if 'conclu' in status_lower else ('warning text-dark' if 'aprovado' in status_lower else 'secondary') }}">
+                  {{ s.status }}
                 </span>
+              </td>
+              <td>
+                <button class="btn btn-sm btn-outline-primary"
+                  onclick="verDetalhes(
+                    {{ s.id_servico | tojson }},
+                    {{ s.client_name | tojson }},
+                    {{ s.budget_id | tojson }},
+                    {{ s.service_date | tojson }},
+                    {{ s.service_type | tojson }},
+                    {{ s.service_value | tojson }},
+                    {{ s.status | tojson }},
+                    {{ s.descricao | tojson }},
+                    {{ s.responsavel | tojson }},
+                    {{ s.observacoes | tojson }}
+                  )">
+                  Detalhes
+                </button>
               </td>
             </tr>
           {% else %}
             <tr>
-              <td colspan="7" class="text-center">Nenhum serviço encontrado para o filtro selecionado.</td>
+              <td colspan="8" class="text-center">Nenhum serviço encontrado para o filtro selecionado.</td>
             </tr>
           {% endfor %}
         </tbody>
@@ -67,4 +86,78 @@
     </div>
   </div>
 </div>
+
+<!-- Modal de detalhes do serviço -->
+<div class="modal fade" id="modalDetalhes" tabindex="-1" aria-labelledby="modalDetalhesLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalDetalhesLabel">Detalhes do Serviço</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-sm-6">
+            <p class="mb-1 text-muted small">Cliente</p>
+            <p class="fw-semibold mb-0" id="det-cliente"></p>
+          </div>
+          <div class="col-sm-6">
+            <p class="mb-1 text-muted small">Nº Orçamento</p>
+            <p class="fw-semibold mb-0" id="det-orcamento"></p>
+          </div>
+          <div class="col-sm-6">
+            <p class="mb-1 text-muted small">Data do Serviço</p>
+            <p class="fw-semibold mb-0" id="det-data"></p>
+          </div>
+          <div class="col-sm-6">
+            <p class="mb-1 text-muted small">Tipo de Serviço</p>
+            <p class="fw-semibold mb-0" id="det-tipo"></p>
+          </div>
+          <div class="col-sm-6">
+            <p class="mb-1 text-muted small">Valor</p>
+            <p class="fw-semibold mb-0" id="det-valor"></p>
+          </div>
+          <div class="col-sm-6">
+            <p class="mb-1 text-muted small">Status</p>
+            <p class="fw-semibold mb-0" id="det-status"></p>
+          </div>
+          <div class="col-12"><hr class="my-1"></div>
+          <div class="col-12">
+            <p class="mb-1 text-muted small">Descrição do Serviço</p>
+            <p class="fw-semibold mb-0" id="det-descricao"></p>
+          </div>
+          <div class="col-sm-6">
+            <p class="mb-1 text-muted small">Responsável pela Execução</p>
+            <p class="fw-semibold mb-0" id="det-responsavel"></p>
+          </div>
+          <div class="col-12">
+            <p class="mb-1 text-muted small">Observações</p>
+            <p class="fw-semibold mb-0" id="det-observacoes"></p>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function verDetalhes(id, cliente, orcamento, data, tipo, valor, status, descricao, responsavel, observacoes) {
+  document.getElementById('det-cliente').textContent     = cliente || '-';
+  document.getElementById('det-orcamento').textContent   = orcamento ? '#' + orcamento : '-';
+  document.getElementById('det-data').textContent        = data || '-';
+  document.getElementById('det-tipo').textContent        = tipo || '-';
+  document.getElementById('det-valor').textContent       = 'R$ ' + Number(valor || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  document.getElementById('det-status').textContent      = status || '-';
+  document.getElementById('det-descricao').textContent   = descricao || '-';
+  document.getElementById('det-responsavel').textContent = responsavel || '-';
+  document.getElementById('det-observacoes').textContent = observacoes || '-';
+  document.getElementById('modalDetalhesLabel').textContent = 'Detalhes do Serviço' + (id ? ' #' + id : '');
+  new bootstrap.Modal(document.getElementById('modalDetalhes')).show();
+}
+</script>
 {% endblock %}
