@@ -73,10 +73,10 @@
           </table>
         </div>
 
-        <div class="alert alert-secondary">
+        <div class="alert {% if saldo < 0 %}alert-danger{% else %}alert-secondary{% endif %}">
           <strong>Entradas:</strong> {{ total_entradas | brl }} |
           <strong>Saídas:</strong> {{ total_saidas | brl }} |
-          <strong>Saldo:</strong> {{ saldo | brl }}
+          <strong>Saldo:</strong> <span class="{% if saldo < 0 %}fw-bold{% endif %}">{{ saldo | brl }}</span>
         </div>
       </div>
     </div>

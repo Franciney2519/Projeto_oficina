@@ -699,6 +699,40 @@ def _get_active_employees() -> list:
     return employees_df[active_mask].fillna("").to_dict(orient="records")
 
 
+def _normalize_person_name(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", str(value or ""))
+    normalized = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+    return " ".join(normalized.casefold().split())
+
+
+def _employee_status_label(employee: dict) -> str:
+    inactive_values = {"false", "0", "nao", "não"}
+    return "Inativo" if str(employee.get("ativo", "")).strip().lower() in inactive_values else "Ativo"
+
+
+def _find_employee_duplicate(nome: str, ignore_employee_id: Optional[int] = None) -> Optional[dict]:
+    target = _normalize_person_name(nome)
+    if not target:
+        return None
+
+    employees_df = dal.get_all_employees().fillna("")
+    for employee in employees_df.to_dict(orient="records"):
+        employee_id = _coerce_int(employee.get("id_funcionario"))
+        if ignore_employee_id and employee_id == ignore_employee_id:
+            continue
+        if _normalize_person_name(employee.get("nome")) == target:
+            return employee
+    return None
+
+
+def _flash_employee_duplicate(employee: dict) -> None:
+    flash(
+        f'Já tem cadastro dessa pessoa como funcionário: "{employee.get("nome", "")}" '
+        f'(Status: {_employee_status_label(employee)}). Use o botão "Editar" para atualizar os dados.',
+        "warning",
+    )
+
+
 def _split_expense_category(category_value: str) -> Tuple[str, str]:
     """Separa o texto salvo no financeiro em tipo e categoria da despesa."""
     text = str(category_value or "").strip()
@@ -852,6 +886,35 @@ def dashboard():
     resumo_execucao = resumo_execucao.sort_values("total_receita", ascending=False)
     executores = resumo_execucao.to_dict(orient="records")
 
+    latest_budget = None
+    if not budgets_df.empty:
+        clients_lookup = {}
+        if not clients_df.empty:
+            clients_lookup = {
+                _coerce_int(client.get("id_cliente")): client.get("nome", "")
+                for client in clients_df.fillna("").to_dict(orient="records")
+            }
+        latest_candidates = budgets_df.copy()
+        latest_candidates["id_orcamento_num"] = pd.to_numeric(
+            latest_candidates.get("id_orcamento"), errors="coerce"
+        ).fillna(0)
+        latest_candidates["data_sort"] = pd.to_datetime(
+            latest_candidates.get("data_criacao"), errors="coerce"
+        )
+        latest_row = latest_candidates.sort_values(
+            ["data_sort", "id_orcamento_num"], ascending=[False, False]
+        ).iloc[0].to_dict()
+        latest_status = latest_row.get("status") or ""
+        latest_budget = {
+            "id_orcamento": _coerce_int(latest_row.get("id_orcamento")),
+            "cliente": clients_lookup.get(_coerce_int(latest_row.get("id_cliente")), "Cliente removido"),
+            "data": _format_date(latest_row.get("data_criacao")),
+            "status": latest_status,
+            "valor": _coerce_float(latest_row.get("valor_total")),
+            "is_finalizado": _is_budget_finalized(latest_status),
+            "is_reprovado": _normalize_status(latest_status) == "reprovado",
+        }
+
     return render_template(
         "index.html",
         total_clients=total_clients,
@@ -869,6 +932,7 @@ def dashboard():
         chart_saidas=chart_saidas,
         chart_saldo=chart_saldo,
         executores=executores,
+        latest_budget=latest_budget,
     )
 
 
@@ -1140,18 +1204,9 @@ def funcionarios():
             flash("Informe o nome do funcionário.", "warning")
             return redirect(url_for("funcionarios"))
 
-        employees_df = dal.get_all_employees().fillna("")
-        nome_lower = nome.lower()
-        duplicates = employees_df[employees_df["nome"].str.strip().str.lower() == nome_lower]
-        if not duplicates.empty:
-            existing = duplicates.iloc[0]
-            ativo_val = str(existing.get("ativo", "")).strip().lower()
-            status_str = "Inativo" if ativo_val in {"false", "0", "nao", "não"} else "Ativo"
-            flash(
-                f'Já existe um funcionário cadastrado com o nome "{existing["nome"]}" '
-                f'(Status: {status_str}). Use o botão "Editar" para atualizar os dados.',
-                "warning",
-            )
+        duplicate = _find_employee_duplicate(nome)
+        if duplicate:
+            _flash_employee_duplicate(duplicate)
             return redirect(url_for("funcionarios"))
 
         payload = {field: request.form.get(field, "").strip() for field in EMPLOYEE_FIELDS}
@@ -1182,6 +1237,13 @@ def editar_funcionario(employee_id: int):
         flash("Funcionário não encontrado.", "danger")
         return redirect(url_for("funcionarios"))
     payload = {field: request.form.get(field, "").strip() for field in EMPLOYEE_FIELDS}
+    if not payload.get("nome"):
+        flash("Informe o nome do funcionário.", "warning")
+        return redirect(url_for("funcionarios"))
+    duplicate = _find_employee_duplicate(payload["nome"], ignore_employee_id=employee_id)
+    if duplicate:
+        _flash_employee_duplicate(duplicate)
+        return redirect(url_for("funcionarios"))
     dal.update_employee(employee_id, payload)
     flash("Dados do funcionário atualizados com sucesso.", "success")
     return redirect(url_for("funcionarios"))
@@ -1861,9 +1923,13 @@ def novo_orcamento():
 @app.route("/orcamentos")
 def listar_orcamentos():
     _sync_completed_budget_financial_entries_safely()
+    filtro = request.args.get("filtro", "").strip().lower()
     budgets_df = dal.get_all_budgets()
     clients_df = dal.get_all_clients()[["id_cliente", "nome"]]
     merged = budgets_df.merge(clients_df, left_on="id_cliente", right_on="id_cliente", how="left")
+    if filtro == "abertos" and not merged.empty:
+        status_norm = merged["status"].fillna("").astype(str).apply(_normalize_status)
+        merged = merged[(~status_norm.isin(FINALIZED_BUDGET_STATUSES)) & (status_norm != "reprovado")]
     merged = merged.sort_values("data_criacao", ascending=False)
     orcamentos = merged.to_dict(orient="records")
     for orcamento in orcamentos:
@@ -1874,7 +1940,7 @@ def listar_orcamentos():
         # Edição permanece permitida mesmo após efetivação para correções cadastrais.
         orcamento["can_editar"] = True
         orcamento["can_reprovar"] = not is_finalizado
-    return render_template("listar_orcamentos.html", orcamentos=orcamentos)
+    return render_template("listar_orcamentos.html", orcamentos=orcamentos, filtro=filtro)
 
 
 @app.route("/orcamentos/<int:budget_id>")

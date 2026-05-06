@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import unicodedata
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -655,7 +656,13 @@ def deduplicate_employees() -> int:
         return 0
 
     inactive_values = {"false", "0", "nao", "não"}
-    df["_nome_norm"] = df["nome"].astype(str).str.strip().str.lower()
+
+    def _normalize_name(value: str) -> str:
+        normalized = unicodedata.normalize("NFKD", str(value or ""))
+        normalized = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+        return " ".join(normalized.casefold().split())
+
+    df["_nome_norm"] = df["nome"].astype(str).apply(_normalize_name)
     df["_is_ativo"] = ~df["ativo"].astype(str).str.strip().str.lower().isin(inactive_values)
 
     ids_to_delete = []

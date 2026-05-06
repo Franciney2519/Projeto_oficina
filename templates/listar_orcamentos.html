@@ -2,8 +2,22 @@
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
-  <h3>Orçamentos</h3>
-  <a href="{{ url_for('novo_orcamento') }}" class="btn btn-primary">Novo orçamento</a>
+  <div>
+    <h3 class="mb-0">Orçamentos</h3>
+    {% if filtro == 'abertos' %}
+      <small class="text-muted">Exibindo apenas orçamentos em aberto.</small>
+    {% endif %}
+  </div>
+  <div class="d-flex gap-2">
+    {% if filtro == 'abertos' %}
+      <a href="{{ url_for('listar_orcamentos') }}" class="btn btn-outline-secondary">
+        <i class="bi bi-x-circle me-1"></i>Limpar filtro
+      </a>
+    {% endif %}
+    <a href="{{ url_for('novo_orcamento') }}" class="btn btn-primary">
+      <i class="bi bi-plus-circle me-1"></i>Novo orçamento
+    </a>
+  </div>
 </div>
 
 <div class="table-responsive">

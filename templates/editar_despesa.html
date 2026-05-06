@@ -34,6 +34,7 @@
             <label class="form-label">Valor</label>
             <input type="text"
                    name="valor"
+                   id="inputValor"
                    value="{{ entry.valor | brl | replace('R$ ', '') }}"
                    class="form-control"
                    inputmode="numeric"
@@ -93,6 +94,26 @@
   if (tipoSelect) {
     tipoSelect.addEventListener('change', atualizarCategorias);
     atualizarCategorias();
+  }
+
+  const inputValor = document.getElementById('inputValor');
+  if (inputValor) {
+    inputValor.addEventListener('input', function() {
+      let digits = this.value.replace(/\D/g, '');
+      if (!digits) {
+        this.value = '';
+        return;
+      }
+      const number = parseInt(digits, 10);
+      this.value = (number / 100).toLocaleString('pt-BR', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      });
+    });
+    inputValor.addEventListener('keydown', function(event) {
+      if ([8, 9, 27, 46, 37, 38, 39, 40].includes(event.keyCode)) return;
+      if (!/^\d$/.test(event.key)) event.preventDefault();
+    });
   }
 })();
 </script>
