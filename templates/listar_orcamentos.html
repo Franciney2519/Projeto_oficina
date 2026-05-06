@@ -32,7 +32,7 @@
               else 'warning'
             }}">{{ orcamento.status }}</span>
           </td>
-          <td>R$ {{ '%.2f'|format(orcamento.valor_total or 0) }}</td>
+          <td>{{ orcamento.valor_total | brl }}</td>
           <td>
             <a href="{{ url_for('detalhes_orcamento', budget_id=orcamento.id_orcamento) }}" class="btn btn-sm btn-outline-secondary">Detalhes</a>
             {% if orcamento.can_editar %}
