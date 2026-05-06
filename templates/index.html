@@ -56,8 +56,8 @@
     <div class="card text-bg-success h-100">
       <div class="card-body">
         <h5 class="card-title">Saldo do período</h5>
-        <p class="display-6 mb-1">R$ {{ '%.2f'|format(saldo) }}</p>
-        <small>{{ selected_month_name }} / {{ selected_year }} — Entradas: R$ {{ '%.2f'|format(total_entradas) }} | Saídas: R$ {{ '%.2f'|format(total_saidas) }}</small>
+        <p class="display-6 mb-1">{{ saldo | brl }}</p>
+        <small>{{ selected_month_name }} / {{ selected_year }} — Entradas: {{ total_entradas | brl }} | Saídas: {{ total_saidas | brl }}</small>
       </div>
     </div>
   </div>
@@ -99,7 +99,7 @@
                   <tr>
                     <td>{{ exe.responsavel or 'Não informado' }}</td>
                     <td class="text-end">{{ exe.qtd_servicos }}</td>
-                    <td class="text-end">R$ {{ '%.2f'|format(exe.total_receita) }}</td>
+                    <td class="text-end">{{ exe.total_receita | brl }}</td>
                   </tr>
                 {% endfor %}
               </tbody>
@@ -125,7 +125,7 @@
       <div class="card-body">
         <h5 class="card-title">Como usar</h5>
         <p>Utilize o menu para navegar entre cadastro de clientes, geração de orçamentos, execução de serviços e controle financeiro.</p>
-        <p>Os arquivos Excel ficam na raiz do projeto e podem ser editados manualmente caso necessário.</p>
+        <p>Os dados ficam armazenados no banco de dados na nuvem e são atualizados em tempo real.</p>
       </div>
     </div>
   </div>
@@ -186,7 +186,7 @@
           callbacks: {
             label(context) {
               const value = context.parsed.y ?? 0;
-              return `${context.dataset.label}: R$ ${value.toFixed(2)}`;
+              return `${context.dataset.label}: ${value.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}`;
             },
           },
         },

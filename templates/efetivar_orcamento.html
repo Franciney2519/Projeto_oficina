@@ -7,12 +7,15 @@
       <div class="card-body">
         <h5 class="card-title">Efetivar orçamento #{{ budget.id_orcamento }}</h5>
         <p><strong>Cliente:</strong> {{ client.nome }}</p>
-        <p><strong>Valor base do orçamento:</strong> R$ {{ '%.2f'|format(base_total) }}</p>
+        <p><strong>Valor base do orçamento:</strong> {{ base_total | brl }}</p>
         <p><strong>Total com forma de pagamento:</strong> <span id="valorFinalDisplay"></span></p>
         <h6>Itens</h6>
-        <ul>
+        <ul class="list-group mb-3">
           {% for item in items %}
-            <li>{{ item.descricao }} - R$ {{ '%.2f'|format(item.subtotal) }}</li>
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+              <span>{{ item.descricao }}</span>
+              <span class="text-nowrap ms-2">{{ item.subtotal | brl }}</span>
+            </li>
           {% endfor %}
         </ul>
 
