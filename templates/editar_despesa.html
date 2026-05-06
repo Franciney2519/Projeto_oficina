@@ -34,10 +34,20 @@
             <label class="form-label">Valor</label>
             <input type="text"
                    name="valor"
-                   value="{{ '%.2f'|format(entry.valor or 0) }}"
+                   value="{{ entry.valor | brl | replace('R$ ', '') }}"
                    class="form-control"
-                   inputmode="decimal"
+                   inputmode="numeric"
+                   autocomplete="off"
                    required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Orçamento relacionado <small class="text-muted">(opcional)</small></label>
+            <select name="relacionado_orcamento_id" class="form-select">
+              <option value="">Nenhum</option>
+              {% for b in budget_options %}
+                <option value="{{ b.id }}" {% if b.id == entry.relacionado_orcamento_id %}selected{% endif %}>{{ b.label }}</option>
+              {% endfor %}
+            </select>
           </div>
           <div class="d-flex justify-content-between">
             <a href="{{ url_for('financeiro') }}" class="btn btn-outline-secondary">Cancelar</a>

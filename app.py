@@ -735,13 +735,19 @@ def _build_expense_payload_from_form(form) -> Tuple[Optional[dict], Optional[str
     if not descricao:
         return None, "Informe uma descrição para a despesa."
 
+    orcamento_id_raw = form.get("relacionado_orcamento_id", "").strip()
+    try:
+        relacionado_orcamento_id = int(orcamento_id_raw) if orcamento_id_raw else None
+    except ValueError:
+        relacionado_orcamento_id = None
+
     return {
         "data": data_saida.strftime("%Y-%m-%d"),
         "tipo_lancamento": "Saída",
         "categoria": f"{tipo_despesa} - {categoria}",
         "descricao": descricao,
         "valor": valor,
-        "relacionado_orcamento_id": None,
+        "relacionado_orcamento_id": relacionado_orcamento_id,
         "relacionado_servico_id": None,
     }, None
 
@@ -2272,6 +2278,26 @@ def financeiro():
     data_fim = request.args.get("data_fim")
     tipo = request.args.get("tipo")
 
+    # Lista de orçamentos para o campo "Orçamento relacionado" no formulário de despesa
+    budgets_df = dal.get_all_budgets()
+    clients_df = dal.get_all_clients().fillna("")
+    client_name_map = {
+        int(r["id_cliente"]): r["nome"]
+        for r in clients_df.to_dict(orient="records")
+        if r.get("id_cliente")
+    }
+    budget_options = []
+    if not budgets_df.empty:
+        for b in budgets_df.sort_values("id_orcamento", ascending=False).to_dict(orient="records"):
+            bid = _coerce_int(b.get("id_orcamento"))
+            if not bid:
+                continue
+            cname = client_name_map.get(_coerce_int(b.get("id_cliente")), "")
+            budget_options.append({
+                "id": bid,
+                "label": f"#{bid} — {cname} ({b.get('status', '')})",
+            })
+
     entries_df = dal.get_all_financial_entries()
     entries_df["data"] = pd.to_datetime(entries_df["data"], errors="coerce")
 
@@ -2309,6 +2335,7 @@ def financeiro():
         tipo=tipo,
         expense_types=FINANCE_EXPENSE_TYPES,
         today_str=datetime.today().strftime("%Y-%m-%d"),
+        budget_options=budget_options,
     )
 
 
@@ -2333,12 +2360,33 @@ def editar_despesa_financeira(entry_id: int):
         return redirect(url_for("financeiro"))
 
     tipo_despesa, categoria = _split_expense_category(entry.get("categoria", ""))
+
+    budgets_df = dal.get_all_budgets()
+    clients_df = dal.get_all_clients().fillna("")
+    client_name_map = {
+        int(r["id_cliente"]): r["nome"]
+        for r in clients_df.to_dict(orient="records")
+        if r.get("id_cliente")
+    }
+    budget_options = []
+    if not budgets_df.empty:
+        for b in budgets_df.sort_values("id_orcamento", ascending=False).to_dict(orient="records"):
+            bid = _coerce_int(b.get("id_orcamento"))
+            if not bid:
+                continue
+            cname = client_name_map.get(_coerce_int(b.get("id_cliente")), "")
+            budget_options.append({
+                "id": bid,
+                "label": f"#{bid} — {cname} ({b.get('status', '')})",
+            })
+
     return render_template(
         "editar_despesa.html",
         entry=entry,
         expense_types=FINANCE_EXPENSE_TYPES,
         selected_type=tipo_despesa,
         selected_category=categoria,
+        budget_options=budget_options,
     )
 
 

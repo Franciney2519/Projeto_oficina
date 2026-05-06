@@ -114,6 +114,15 @@
             <label class="form-label">Valor</label>
             <input type="text" name="valor" id="inputValor" class="form-control" inputmode="numeric" placeholder="0,00" required autocomplete="off">
           </div>
+          <div class="mb-3">
+            <label class="form-label">Orçamento relacionado <small class="text-muted">(opcional)</small></label>
+            <select name="relacionado_orcamento_id" class="form-select">
+              <option value="">Nenhum</option>
+              {% for b in budget_options %}
+                <option value="{{ b.id }}">{{ b.label }}</option>
+              {% endfor %}
+            </select>
+          </div>
           <button type="submit" class="btn btn-danger w-100">Salvar despesa</button>
         </form>
       </div>
