@@ -1271,9 +1271,10 @@ def _build_budget_items_from_form(form) -> List[dict]:
     tipos = form.getlist("item_tipo[]")
     quantidades = form.getlist("item_quantidade[]")
     valores = form.getlist("item_valor[]")
+    custos = form.getlist("item_custo[]")
 
     items = []
-    for desc, tipo, qtd, val in zip(descricoes, tipos, quantidades, valores):
+    for i, (desc, tipo, qtd, val) in enumerate(zip(descricoes, tipos, quantidades, valores)):
         if not desc:
             continue
         try:
@@ -1281,9 +1282,13 @@ def _build_budget_items_from_form(form) -> List[dict]:
         except (TypeError, ValueError):
             quantidade = 1.0
         try:
-            valor_unitario = float(val or 0)
+            valor_unitario = _parse_brl_number(val or "0")
         except (TypeError, ValueError):
             valor_unitario = 0.0
+        try:
+            custo_unitario = _parse_brl_number(custos[i]) if i < len(custos) and custos[i].strip() else 0.0
+        except (TypeError, ValueError):
+            custo_unitario = 0.0
         items.append(
             {
                 "descricao": desc.strip(),
@@ -1291,6 +1296,8 @@ def _build_budget_items_from_form(form) -> List[dict]:
                 "quantidade": quantidade,
                 "valor_unitario": valor_unitario,
                 "subtotal": quantidade * valor_unitario,
+                "custo_unitario": custo_unitario,
+                "custo_total": quantidade * custo_unitario,
             }
         )
     return items
@@ -2184,6 +2191,36 @@ def efetivar_orcamento(budget_id: int):
             )
         else:
             app.logger.warning("Lançamento financeiro já existente para orçamento %s; inserção duplicada evitada.", budget_id)
+
+        # Lança custo de peças (Saída) automaticamente para itens do tipo Produto com custo informado
+        custo_total_pecas = sum(
+            item.get("custo_total", 0.0)
+            for item in items
+            if item.get("tipo") == "Produto" and item.get("custo_total", 0.0) > 0
+        )
+        if custo_total_pecas > 0:
+            budget_has_cost_entry = False
+            if not existing_financial_df.empty:
+                normalized_types = existing_financial_df["tipo_lancamento"].fillna("").astype(str).apply(_normalize_status)
+                related_budget = pd.to_numeric(existing_financial_df.get("relacionado_orcamento_id"), errors="coerce")
+                desc_col = existing_financial_df["descricao"].fillna("").astype(str)
+                budget_has_cost_entry = (
+                    (normalized_types == "saida") &
+                    (related_budget == budget_id) &
+                    desc_col.str.startswith("Custo de peças")
+                ).any()
+            if not budget_has_cost_entry:
+                dal.add_financial_entry(
+                    {
+                        "data": data_status.strftime("%Y-%m-%d"),
+                        "tipo_lancamento": "Saída",
+                        "categoria": "Materiais e peças - Componentes automotivos",
+                        "descricao": f"Custo de peças - Orçamento #{budget_id}",
+                        "valor": round(custo_total_pecas, 2),
+                        "relacionado_orcamento_id": budget_id,
+                        "relacionado_servico_id": None,
+                    }
+                )
 
         pagamento_texto_whatsapp = _generate_payment_whatsapp_text(
             client.get("nome", "cliente"), budget_id, valor_final, data_status

@@ -208,10 +208,23 @@ function adicionarItem() {
           <input type="text" inputmode="numeric" name="item_valor[]"
                  class="form-control form-control-lg inp-valor" placeholder="0,00" autocomplete="off">
         </div>
+        <div class="col-12 bloco-custo" style="display:none">
+          <label class="form-label small fw-semibold text-warning">Custo de compra unit. (R$) <small class="text-muted fw-normal">— interno, não aparece no PDF</small></label>
+          <input type="text" inputmode="numeric" name="item_custo[]"
+                 class="form-control form-control-lg inp-custo" placeholder="0,00" autocomplete="off">
+        </div>
       </div>
     </div>`;
+  const tipoSelect = div.querySelector("select[name='item_tipo[]']");
+  const blocoCusto = div.querySelector('.bloco-custo');
+  function toggleCusto() {
+    blocoCusto.style.display = tipoSelect.value === 'Produto' ? '' : 'none';
+  }
+  tipoSelect.addEventListener('change', toggleCusto);
+  toggleCusto();
   div.querySelectorAll('input').forEach(i => i.addEventListener('input', atualizarTotal));
   aplicarMascaraValor(div.querySelector('.inp-valor'));
+  aplicarMascaraValor(div.querySelector('.inp-custo'));
   div.querySelector('.btn-remover').addEventListener('click', () => { div.remove(); atualizarTotal(); });
   listaItens.appendChild(div);
   atualizarTotal();
