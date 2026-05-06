@@ -47,7 +47,7 @@
                   <td>{{ entry.tipo_lancamento }}</td>
                   <td>{{ entry.categoria }}</td>
                   <td>{{ entry.descricao }}</td>
-                  <td>R$ {{ '%.2f'|format(entry.valor or 0) }}</td>
+                  <td>{{ entry.valor | brl }}</td>
                   <td>
                     {% if entry.is_expense %}
                       <div class="d-flex gap-2">
@@ -74,9 +74,9 @@
         </div>
 
         <div class="alert alert-secondary">
-          <strong>Entradas:</strong> R$ {{ '%.2f'|format(total_entradas) }} |
-          <strong>Saídas:</strong> R$ {{ '%.2f'|format(total_saidas) }} |
-          <strong>Saldo:</strong> R$ {{ '%.2f'|format(saldo) }}
+          <strong>Entradas:</strong> {{ total_entradas | brl }} |
+          <strong>Saídas:</strong> {{ total_saidas | brl }} |
+          <strong>Saldo:</strong> {{ saldo | brl }}
         </div>
       </div>
     </div>

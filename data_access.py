@@ -29,6 +29,12 @@ logger.setLevel(logging.INFO)
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
+
+def _safe_update_dict(data: Dict, allowed_cols: list) -> Dict:
+    """Filtra o dict mantendo apenas colunas permitidas (previne SQL injection por nome de coluna)."""
+    allowed = set(allowed_cols)
+    return {k: v for k, v in data.items() if k in allowed}
+
 # Colunas mantidas para compatibilidade com o restante do app
 CLIENT_COLUMNS = [
     "id_cliente", "nome", "cpf_cnpj", "telefone_whatsapp", "email",
@@ -239,12 +245,16 @@ def add_client(data: Dict) -> int:
             new_id = cur.fetchone()["id_cliente"]
         conn.commit()
         return new_id
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
 
 def update_client(client_id: int, data: Dict) -> bool:
     data.pop("id_cliente", None)
+    data = _safe_update_dict(data, [c for c in CLIENT_COLUMNS if c != "id_cliente"])
     if not data:
         return False
     set_clause = ", ".join(f"{k} = %s" for k in data)
@@ -259,6 +269,9 @@ def update_client(client_id: int, data: Dict) -> bool:
             updated = cur.rowcount > 0
         conn.commit()
         return updated
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
@@ -316,12 +329,16 @@ def add_vehicle(data: Dict) -> int:
             new_id = cur.fetchone()["id_veiculo"]
         conn.commit()
         return new_id
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
 
 def update_vehicle(vehicle_id: int, data: Dict) -> bool:
     data.pop("id_veiculo", None)
+    data = _safe_update_dict(data, [c for c in VEICULO_COLUMNS if c != "id_veiculo"])
     if not data:
         return False
     set_clause = ", ".join(f"{k} = %s" for k in data)
@@ -336,6 +353,9 @@ def update_vehicle(vehicle_id: int, data: Dict) -> bool:
             updated = cur.rowcount > 0
         conn.commit()
         return updated
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
@@ -348,6 +368,9 @@ def delete_vehicle(vehicle_id: int) -> bool:
             deleted = cur.rowcount > 0
         conn.commit()
         return deleted
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
@@ -392,12 +415,16 @@ def add_budget(data: Dict) -> int:
             new_id = cur.fetchone()["id_orcamento"]
         conn.commit()
         return new_id
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
 
 def update_budget(budget_id: int, data: Dict) -> bool:
     data.pop("id_orcamento", None)
+    data = _safe_update_dict(data, [c for c in ORCAMENTO_COLUMNS if c != "id_orcamento"])
     if not data:
         return False
     set_clause = ", ".join(f"{k} = %s" for k in data)
@@ -412,6 +439,9 @@ def update_budget(budget_id: int, data: Dict) -> bool:
             updated = cur.rowcount > 0
         conn.commit()
         return updated
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
@@ -445,6 +475,9 @@ def add_service(data: Dict) -> int:
             new_id = cur.fetchone()["id_servico"]
         conn.commit()
         return new_id
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
@@ -492,12 +525,16 @@ def add_financial_entry(data: Dict) -> int:
             new_id = cur.fetchone()["id_lancamento"]
         conn.commit()
         return new_id
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
 
 def update_financial_entry(entry_id: int, data: Dict) -> bool:
     data.pop("id_lancamento", None)
+    data = _safe_update_dict(data, [c for c in FINANCEIRO_COLUMNS if c != "id_lancamento"])
     for optional_int_col in ("relacionado_orcamento_id", "relacionado_servico_id"):
         if data.get(optional_int_col) == "":
             data[optional_int_col] = None
@@ -515,6 +552,9 @@ def update_financial_entry(entry_id: int, data: Dict) -> bool:
             updated = cur.rowcount > 0
         conn.commit()
         return updated
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
@@ -527,6 +567,9 @@ def delete_financial_entry(entry_id: int) -> bool:
             deleted = cur.rowcount > 0
         conn.commit()
         return deleted
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
@@ -573,12 +616,16 @@ def add_employee(data: Dict) -> int:
             new_id = cur.fetchone()["id_funcionario"]
         conn.commit()
         return new_id
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
 
 def update_employee(employee_id: int, data: Dict) -> bool:
     data.pop("id_funcionario", None)
+    data = _safe_update_dict(data, [c for c in FUNCIONARIOS_COLUMNS if c != "id_funcionario"])
     if not data:
         return False
     set_clause = ", ".join(f"{k} = %s" for k in data)
@@ -593,6 +640,9 @@ def update_employee(employee_id: int, data: Dict) -> bool:
             updated = cur.rowcount > 0
         conn.commit()
         return updated
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 

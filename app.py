@@ -82,10 +82,15 @@ app = Flask(
 # Necessário para que Flask reconheça HTTPS quando atrás do proxy do Railway
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
+_IS_PRODUCTION = os.environ.get("FLASK_ENV") == "production"
+
 app.secret_key = os.environ.get("SECRET_KEY", "oficina-mecanica-secret-dev")
+if _IS_PRODUCTION and app.secret_key == "oficina-mecanica-secret-dev":
+    raise RuntimeError("Configure a variável SECRET_KEY antes de iniciar em produção.")
+
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
-app.config["SESSION_COOKIE_SECURE"] = False
+app.config["SESSION_COOKIE_SECURE"] = _IS_PRODUCTION
 
 APP_USERNAME = os.environ.get("APP_USERNAME", "admin")
 APP_PASSWORD = os.environ.get("APP_PASSWORD", "oficina123")
@@ -131,12 +136,23 @@ COMPANY_INFO = {
 }
 
 
+@app.template_filter("brl")
+def format_brl(value) -> str:
+    """Formata número como moeda pt-BR: 1234.56 → R$ 1.234,56"""
+    try:
+        v = float(value or 0)
+    except (TypeError, ValueError):
+        v = 0.0
+    formatted = f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"R$ {formatted}"
+
+
 @app.context_processor
 def inject_company_info():
     """Disponibiliza dados da empresa para todos os templates."""
     return {"company_info": COMPANY_INFO}
 LOGO_SOURCE_PATH = os.path.join(PROJECT_DIR, "static", "logo.png")
-LOGO_CACHE_PATH = os.path.join(PROJECT_DIR, "static", "logo.png")
+TAXA_CARTAO_CREDITO = 0.03
 VALIDADE_PADRAO = "5 dias corridos"
 OBSERVACOES_PADRAO = (
     "Valores sujeitos a alteração após o período de validade. "
@@ -245,10 +261,13 @@ def atualizar_base():
 
 
 def _parse_date(date_str: str) -> datetime:
-    """Converte strings de data no formato YYYY-MM-DD."""
+    """Converte strings de data no formato YYYY-MM-DD. Retorna hoje em caso de formato inválido."""
     if not date_str:
         return datetime.today()
-    return datetime.strptime(date_str, "%Y-%m-%d")
+    try:
+        return datetime.strptime(date_str, "%Y-%m-%d")
+    except ValueError:
+        return datetime.today()
 
 
 def _parse_brl_number(raw_value: str) -> float:
@@ -353,13 +372,9 @@ def _get_pdf_logo_path() -> Optional[str]:
         return None
 
     try:
-        source_mtime = os.path.getmtime(LOGO_SOURCE_PATH)
-        if os.path.exists(LOGO_CACHE_PATH) and os.path.getmtime(LOGO_CACHE_PATH) >= source_mtime:
-            return LOGO_CACHE_PATH
-
-        with Image.open(LOGO_SOURCE_PATH) as img:
-            img.save(LOGO_CACHE_PATH, format="PNG")
-        return LOGO_CACHE_PATH
+        if not os.path.exists(LOGO_SOURCE_PATH):
+            return None
+        return LOGO_SOURCE_PATH
     except Exception:
         return None
 
@@ -610,12 +625,32 @@ def _sync_completed_budget_financial_entries() -> int:
     return changes
 
 
+_last_sync_time: float = 0.0
+_SYNC_COOLDOWN_SECONDS = 60
+
+
 def _sync_completed_budget_financial_entries_safely() -> int:
+    global _last_sync_time
+    import time
+    now = time.monotonic()
+    if now - _last_sync_time < _SYNC_COOLDOWN_SECONDS:
+        return 0
     try:
-        return _sync_completed_budget_financial_entries()
+        result = _sync_completed_budget_financial_entries()
+        _last_sync_time = time.monotonic()
+        return result
     except Exception:  # pylint: disable=broad-except
         app.logger.exception("Falha ao sincronizar orçamentos concluídos com o financeiro.")
         return 0
+
+
+def _get_active_employees() -> list:
+    """Retorna lista de funcionários ativos como dicts, pronta para usar nos templates."""
+    employees_df = dal.get_all_employees()
+    if "ativo" not in employees_df.columns:
+        employees_df["ativo"] = True
+    active_mask = ~employees_df["ativo"].astype(str).str.lower().isin({"false", "0", "nao", "não"})
+    return employees_df[active_mask].fillna("").to_dict(orient="records")
 
 
 def _split_expense_category(category_value: str) -> Tuple[str, str]:
@@ -1065,8 +1100,7 @@ def funcionarios():
                 f'(Status: {status_str}). Use o botão "Editar" para atualizar os dados.',
                 "warning",
             )
-            employees = employees_df.to_dict(orient="records")
-            return render_template("funcionarios.html", employees=employees)
+            return redirect(url_for("funcionarios"))
 
         payload = {field: request.form.get(field, "").strip() for field in EMPLOYEE_FIELDS}
         payload["ativo"] = True
@@ -1162,8 +1196,14 @@ def _build_budget_items_from_form(form) -> List[dict]:
     for desc, tipo, qtd, val in zip(descricoes, tipos, quantidades, valores):
         if not desc:
             continue
-        quantidade = float(qtd or 1)
-        valor_unitario = float(val or 0)
+        try:
+            quantidade = float(qtd or 1)
+        except (TypeError, ValueError):
+            quantidade = 1.0
+        try:
+            valor_unitario = float(val or 0)
+        except (TypeError, ValueError):
+            valor_unitario = 0.0
         items.append(
             {
                 "descricao": desc.strip(),
@@ -1184,7 +1224,7 @@ def _calculate_total_with_payment(base_total: float, payment_method: str) -> Tup
     total = base_total
     taxa = 0.0
     if payment_method == "Cartão Crédito":
-        taxa = round(base_total * 0.03, 2)
+        taxa = round(base_total * TAXA_CARTAO_CREDITO, 2)
         total = round(base_total + taxa, 2)
     return total, taxa
 
@@ -1595,15 +1635,15 @@ def _load_vehicles_by_client(clients: list) -> dict:
 def novo_orcamento():
     clients_df = dal.get_all_clients().fillna("")
     clients = clients_df.to_dict(orient="records")
-    employees_df = dal.get_all_employees()
-    if "ativo" not in employees_df.columns:
-        employees_df["ativo"] = True
-    active_mask = ~employees_df["ativo"].astype(str).str.lower().isin({"false", "0", "nao", "não"})
-    employees = employees_df[active_mask].fillna("").to_dict(orient="records")
+    employees = _get_active_employees()
     vehicles_by_client = _load_vehicles_by_client(clients)
 
     if request.method == "POST":
-        client_id = int(request.form.get("id_cliente"))
+        try:
+            client_id = int(request.form.get("id_cliente", ""))
+        except (TypeError, ValueError):
+            flash("Selecione um cliente válido.", "danger")
+            return redirect(url_for("novo_orcamento"))
         client = dal.get_client_by_id(client_id)
         if not client:
             flash("Cliente informado não existe.", "danger")
@@ -1765,16 +1805,15 @@ def editar_orcamento(budget_id: int):
     if current_payment not in PAYMENT_OPTIONS:
         current_payment = "PIX"
     final_total = float(budget.get("valor_total", base_total) or base_total)
-    employees_df = dal.get_all_employees()
-    if "ativo" not in employees_df.columns:
-        employees_df["ativo"] = True
-    active_mask = ~employees_df["ativo"].astype(str).str.lower().isin({"false", "0", "nao", "não"})
-    employees = employees_df[active_mask].fillna("").to_dict(orient="records")
-
+    employees = _get_active_employees()
     vehicles_by_client = _load_vehicles_by_client(clients)
 
     if request.method == "POST":
-        client_id = int(request.form.get("id_cliente"))
+        try:
+            client_id = int(request.form.get("id_cliente", ""))
+        except (TypeError, ValueError):
+            flash("Selecione um cliente válido.", "danger")
+            return redirect(url_for("editar_orcamento", budget_id=budget_id))
         client = dal.get_client_by_id(client_id)
         if not client:
             flash("Cliente selecionado não existe.", "danger")
@@ -1968,11 +2007,7 @@ def efetivar_orcamento(budget_id: int):
         float(item.get("subtotal", item.get("quantidade", 0) * item.get("valor_unitario", 0)) or 0)
         for item in items
     )
-    employees_df = dal.get_all_employees()
-    if "ativo" not in employees_df.columns:
-        employees_df["ativo"] = True
-    active_mask = ~employees_df["ativo"].astype(str).str.lower().isin({"false", "0", "nao", "não"})
-    employees = employees_df[active_mask].fillna("").to_dict(orient="records")
+    employees = _get_active_employees()
 
     if request.method == "POST":
         forma_pagamento = request.form.get("forma_pagamento", "")
@@ -2001,7 +2036,7 @@ def efetivar_orcamento(budget_id: int):
         taxa = 0.0
         valor_final = base_total
         if forma_pagamento == "Cartão Crédito":
-            taxa = round(base_total * 0.03, 2)
+            taxa = round(base_total * TAXA_CARTAO_CREDITO, 2)
             valor_final = round(base_total + taxa, 2)
 
         data_conclusao_str = data_status.strftime("%Y-%m-%d") if is_final_approval else ""
@@ -2092,6 +2127,8 @@ def efetivar_orcamento(budget_id: int):
         payment_options=PAYMENT_OPTIONS,
         base_total=base_total,
         employees=employees,
+        today_str=datetime.today().strftime("%Y-%m-%d"),
+        taxa_cartao=TAXA_CARTAO_CREDITO,
     )
 
 
@@ -2126,11 +2163,17 @@ def financeiro():
     if data_fim:
         entries_df = entries_df[entries_df["data"] <= _parse_date(data_fim)]
     if tipo in {"Entrada", "Saída"}:
-        entries_df = entries_df[entries_df["tipo_lancamento"] == tipo]
+        tipo_norm = _normalize_status(tipo)
+        entries_df = entries_df[
+            entries_df["tipo_lancamento"].fillna("").astype(str).apply(_normalize_status) == tipo_norm
+        ]
 
     entries_df = entries_df.sort_values("data", ascending=False)
-    total_entradas = entries_df[entries_df["tipo_lancamento"] == "Entrada"]["valor"].sum()
-    total_saidas = entries_df[entries_df["tipo_lancamento"] == "Saída"]["valor"].sum()
+    tipo_norm_entrada = _normalize_status("Entrada")
+    tipo_norm_saida = _normalize_status("Saída")
+    tipo_series = entries_df["tipo_lancamento"].fillna("").astype(str).apply(_normalize_status)
+    total_entradas = entries_df[tipo_series == tipo_norm_entrada]["valor"].sum()
+    total_saidas = entries_df[tipo_series == tipo_norm_saida]["valor"].sum()
 
     entries = []
     for entry in entries_df.to_dict(orient="records"):

@@ -29,7 +29,7 @@
           </div>
           <div class="mb-3">
             <label class="form-label">Data de pagamento / conclusão</label>
-            <input type="date" name="data_conclusao" class="form-control" value="{{ date|default('', true) }}">
+            <input type="date" name="data_conclusao" class="form-control" value="{{ today_str }}">
           </div>
           <div class="mb-3">
             <label class="form-label">Responsável pela execução</label>
@@ -65,17 +65,18 @@
 <script>
 (function() {
   const baseTotal = {{ (base_total | default(0)) | float }};
+  const taxaCartao = {{ taxa_cartao | default(0.03) | float }};
   const selectForma = document.querySelector('select[name="forma_pagamento"]');
   const display = document.getElementById('valorFinalDisplay');
 
   function formatValue(value) {
-    return 'R$ ' + value.toFixed(2);
+    return 'R$ ' + value.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
   }
 
   function atualizarTotal() {
     let total = baseTotal;
     if (selectForma.value === 'Cartão Crédito') {
-      total = +(baseTotal * 1.03).toFixed(2);
+      total = +(baseTotal * (1 + taxaCartao)).toFixed(2);
     }
     display.textContent = formatValue(total);
   }
