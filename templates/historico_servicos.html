@@ -15,7 +15,7 @@
           <option value="">Todos</option>
           {% for cliente in clients %}
             <option value="{{ cliente.id_cliente }}" {% if cliente.id_cliente == selected_client_id %}selected{% endif %}>
-              {{ cliente.nome }} (ID {{ cliente.id_cliente }})
+              {{ cliente.nome }}
             </option>
           {% endfor %}
         </select>
@@ -33,7 +33,6 @@
       <table class="table table-striped align-middle">
         <thead>
           <tr>
-            <th>ID Cliente</th>
             <th>Cliente</th>
             <th>Nº Orçamento</th>
             <th>Data do Serviço</th>
@@ -46,7 +45,6 @@
         <tbody>
           {% for s in services %}
             <tr>
-              <td>{{ s.client_id }}</td>
               <td>{{ s.client_name }}</td>
               <td>{{ s.budget_id or '-' }}</td>
               <td>{{ s.service_date }}</td>
@@ -59,26 +57,15 @@
                 </span>
               </td>
               <td>
-                <button class="btn btn-sm btn-outline-primary"
-                  onclick="verDetalhes(
-                    {{ s.id_servico | tojson }},
-                    {{ s.client_name | tojson }},
-                    {{ s.budget_id | tojson }},
-                    {{ s.service_date | tojson }},
-                    {{ s.service_type | tojson }},
-                    {{ s.service_value | tojson }},
-                    {{ s.status | tojson }},
-                    {{ s.descricao | tojson }},
-                    {{ s.responsavel | tojson }},
-                    {{ s.observacoes | tojson }}
-                  )">
+                <button class="btn btn-sm btn-outline-primary btn-detalhes"
+                  data-info="{{ s | tojson | e }}">
                   Detalhes
                 </button>
               </td>
             </tr>
           {% else %}
             <tr>
-              <td colspan="8" class="text-center">Nenhum serviço encontrado para o filtro selecionado.</td>
+              <td colspan="7" class="text-center">Nenhum serviço encontrado para o filtro selecionado.</td>
             </tr>
           {% endfor %}
         </tbody>
@@ -146,18 +133,23 @@
 
 {% block scripts %}
 <script>
-function verDetalhes(id, cliente, orcamento, data, tipo, valor, status, descricao, responsavel, observacoes) {
-  document.getElementById('det-cliente').textContent     = cliente || '-';
-  document.getElementById('det-orcamento').textContent   = orcamento ? '#' + orcamento : '-';
-  document.getElementById('det-data').textContent        = data || '-';
-  document.getElementById('det-tipo').textContent        = tipo || '-';
-  document.getElementById('det-valor').textContent       = 'R$ ' + Number(valor || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-  document.getElementById('det-status').textContent      = status || '-';
-  document.getElementById('det-descricao').textContent   = descricao || '-';
-  document.getElementById('det-responsavel').textContent = responsavel || '-';
-  document.getElementById('det-observacoes').textContent = observacoes || '-';
-  document.getElementById('modalDetalhesLabel').textContent = 'Detalhes do Serviço' + (id ? ' #' + id : '');
-  new bootstrap.Modal(document.getElementById('modalDetalhes')).show();
-}
+document.querySelectorAll('.btn-detalhes').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    var s = JSON.parse(this.dataset.info);
+    document.getElementById('modalDetalhesLabel').textContent =
+      'Detalhes do Serviço' + (s.id_servico ? ' #' + s.id_servico : '');
+    document.getElementById('det-cliente').textContent    = s.client_name || '-';
+    document.getElementById('det-orcamento').textContent  = s.budget_id ? '#' + s.budget_id : '-';
+    document.getElementById('det-data').textContent       = s.service_date || '-';
+    document.getElementById('det-tipo').textContent       = s.service_type || '-';
+    document.getElementById('det-valor').textContent      =
+      'R$ ' + Number(s.service_value || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    document.getElementById('det-status').textContent     = s.status || '-';
+    document.getElementById('det-descricao').textContent  = s.descricao || '-';
+    document.getElementById('det-responsavel').textContent = s.responsavel || '-';
+    document.getElementById('det-observacoes').textContent = s.observacoes || '-';
+    new bootstrap.Modal(document.getElementById('modalDetalhes')).show();
+  });
+});
 </script>
 {% endblock %}

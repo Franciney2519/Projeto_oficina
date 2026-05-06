@@ -1190,7 +1190,15 @@ def historico_servicos():
             }
         )
 
-    clients = clients_df.sort_values("nome").to_dict(orient="records")
+    # Apenas clientes que possuem serviços registrados, em ordem alfabética
+    client_ids_with_services = set(
+        services_df["id_cliente"].dropna().astype(int).tolist()
+    )
+    clients = (
+        clients_df[clients_df["id_cliente"].isin(client_ids_with_services)]
+        .sort_values("nome")
+        .to_dict(orient="records")
+    )
 
     return render_template(
         "historico_servicos.html",
