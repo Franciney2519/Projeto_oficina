@@ -60,7 +60,7 @@
               </td>
               <td>
                 <button class="btn btn-sm btn-outline-primary btn-detalhes"
-                  data-info="{{ s | tojson | e }}">
+                  data-info='{{ s | tojson }}'>
                   Detalhes
                 </button>
               </td>
@@ -141,21 +141,25 @@
 <script>
 document.querySelectorAll('.btn-detalhes').forEach(function(btn) {
   btn.addEventListener('click', function() {
-    var s = JSON.parse(this.dataset.info);
-    document.getElementById('modalDetalhesLabel').textContent =
-      'Detalhes do Serviço' + (s.id_servico ? ' #' + s.id_servico : '');
-    document.getElementById('det-cliente').textContent    = s.client_name || '-';
-    document.getElementById('det-orcamento').textContent  = s.budget_id ? '#' + s.budget_id : '-';
-    document.getElementById('det-data').textContent       = s.service_date || '-';
-    document.getElementById('det-tipo').textContent       = s.service_type || '-';
-    document.getElementById('det-valor').textContent      =
-      'R$ ' + Number(s.service_value || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-    document.getElementById('det-status').textContent     = s.status || '-';
-    document.getElementById('det-km').textContent         = s.carro_km && s.carro_km !== '-' ? s.carro_km + ' km' : '-';
-    document.getElementById('det-descricao').textContent  = s.descricao || '-';
-    document.getElementById('det-responsavel').textContent = s.responsavel || '-';
-    document.getElementById('det-observacoes').textContent = s.observacoes || '-';
-    new bootstrap.Modal(document.getElementById('modalDetalhes')).show();
+    try {
+      var s = JSON.parse(this.dataset.info);
+      document.getElementById('modalDetalhesLabel').textContent =
+        'Detalhes do Serviço' + (s.id_servico ? ' #' + s.id_servico : '');
+      document.getElementById('det-cliente').textContent     = s.client_name || '-';
+      document.getElementById('det-orcamento').textContent   = s.budget_id ? '#' + s.budget_id : '-';
+      document.getElementById('det-data').textContent        = s.service_date || '-';
+      document.getElementById('det-tipo').textContent        = s.service_type || '-';
+      document.getElementById('det-valor').textContent       =
+        'R$ ' + Number(s.service_value || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+      document.getElementById('det-status').textContent      = s.status || '-';
+      document.getElementById('det-km').textContent          = s.carro_km && s.carro_km !== '-' ? s.carro_km + ' km' : '-';
+      document.getElementById('det-descricao').textContent   = s.descricao || '-';
+      document.getElementById('det-responsavel').textContent = s.responsavel || '-';
+      document.getElementById('det-observacoes').textContent = s.observacoes || '-';
+      new bootstrap.Modal(document.getElementById('modalDetalhes')).show();
+    } catch(err) {
+      console.error('Erro ao abrir detalhes:', err, this.dataset.info);
+    }
   });
 });
 </script>
