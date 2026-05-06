@@ -5,7 +5,13 @@
   <div class="col-lg-7">
     <div class="card mb-3">
       <div class="card-body">
-        <h5 class="card-title">Funcionários cadastrados</h5>
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h5 class="card-title mb-0">Funcionários cadastrados</h5>
+          <form action="{{ url_for('deduplicar_funcionarios') }}" method="post"
+                onsubmit="return confirm('Remover duplicatas? Será mantido apenas o registro ativo de menor ID para cada nome.')">
+            <button type="submit" class="btn btn-sm btn-outline-warning">Remover duplicatas</button>
+          </form>
+        </div>
         <div class="table-responsive">
           <table class="table table-sm align-middle">
             <thead>

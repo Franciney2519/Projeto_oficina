@@ -1113,6 +1113,16 @@ def funcionarios():
     return render_template("funcionarios.html", employees=employees)
 
 
+@app.route("/funcionarios/deduplicar", methods=["POST"])
+def deduplicar_funcionarios():
+    removed = dal.deduplicate_employees()
+    if removed:
+        flash(f"{removed} registro(s) duplicado(s) removido(s) com sucesso.", "success")
+    else:
+        flash("Nenhum duplicado encontrado.", "info")
+    return redirect(url_for("funcionarios"))
+
+
 @app.route("/funcionarios/<int:employee_id>/editar", methods=["POST"])
 def editar_funcionario(employee_id: int):
     employee = dal.get_employee_by_id(employee_id)

@@ -647,6 +647,49 @@ def update_employee(employee_id: int, data: Dict) -> bool:
         conn.close()
 
 
+def deduplicate_employees() -> int:
+    """Remove duplicatas de funcionários com o mesmo nome, mantendo o registro ativo de menor id.
+    Retorna o número de registros removidos."""
+    df = get_all_employees().fillna("")
+    if df.empty:
+        return 0
+
+    inactive_values = {"false", "0", "nao", "não"}
+    df["_nome_norm"] = df["nome"].astype(str).str.strip().str.lower()
+    df["_is_ativo"] = ~df["ativo"].astype(str).str.strip().str.lower().isin(inactive_values)
+
+    ids_to_delete = []
+    for _, grupo in df.groupby("_nome_norm"):
+        if len(grupo) <= 1:
+            continue
+        ativos = grupo[grupo["_is_ativo"]]
+        keeper = ativos.sort_values("id_funcionario").iloc[0] if not ativos.empty else grupo.sort_values("id_funcionario").iloc[0]
+        ids_to_delete.extend(
+            int(row["id_funcionario"])
+            for _, row in grupo.iterrows()
+            if int(row["id_funcionario"]) != int(keeper["id_funcionario"])
+        )
+
+    if not ids_to_delete:
+        return 0
+
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"DELETE FROM funcionarios WHERE id_funcionario = ANY(%s)",
+                (ids_to_delete,),
+            )
+            deleted = cur.rowcount
+        conn.commit()
+        return deleted
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 # ---------------------------
 # Utilitários (mantidos idênticos)
 # ---------------------------
