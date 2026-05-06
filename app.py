@@ -1202,8 +1202,9 @@ def toggle_funcionario(employee_id: int):
 
 @app.route("/historico-servicos")
 def historico_servicos():
-    """Tela consolidada de serviços com filtro por cliente."""
+    """Tela consolidada de serviços com filtro por cliente e placa."""
     selected_client_id = request.args.get("cliente")
+    selected_placa = request.args.get("placa", "").strip().upper()
     try:
         selected_client_id = int(selected_client_id) if selected_client_id else None
     except ValueError:
@@ -1212,31 +1213,55 @@ def historico_servicos():
 
     services_df = dal.get_all_services()
     clients_df = dal.get_all_clients()[["id_cliente", "nome"]]
-    budgets_df = dal.get_all_budgets()[["id_orcamento", "status", "carro_km"]]
+    budgets_df = dal.get_all_budgets()[["id_orcamento", "status", "carro_km", "id_veiculo"]]
+
+    # Busca dados do veículo (placa, marca, modelo) via id_veiculo do orçamento
+    vehicles_df = pd.DataFrame(dal.get_all_vehicles())
+    if not vehicles_df.empty:
+        vehicles_df = vehicles_df[["id_veiculo", "marca", "modelo", "placa"]].fillna("")
+        budgets_df = budgets_df.merge(vehicles_df, on="id_veiculo", how="left")
+    else:
+        budgets_df["marca"] = ""
+        budgets_df["modelo"] = ""
+        budgets_df["placa"] = ""
 
     services_df = services_df.merge(clients_df, on="id_cliente", how="left")
     services_df = services_df.merge(budgets_df, on="id_orcamento", how="left")
     services_df["data_execucao"] = pd.to_datetime(
         services_df["data_execucao"], errors="coerce"
     )
+    services_df = services_df.fillna("")
 
     if selected_client_id:
         services_df = services_df[services_df["id_cliente"] == selected_client_id]
+
+    if selected_placa:
+        services_df = services_df[
+            services_df["placa"].astype(str).str.upper().str.contains(selected_placa, na=False)
+        ]
 
     services_df = services_df.sort_values("data_execucao", ascending=False)
 
     # Agrupa por orçamento: uma linha por orçamento, itens no detalhe
     budgets_seen: dict = {}
     budgets_order: list = []
-    for row in services_df.fillna("").to_dict(orient="records"):
+    for row in services_df.to_dict(orient="records"):
         key = row.get("id_orcamento") or f"sem_{row.get('id_servico')}"
         if key not in budgets_seen:
+            marca  = str(row.get("marca") or "").strip()
+            modelo = str(row.get("modelo") or "").strip()
+            placa  = str(row.get("placa") or "").strip()
+            veiculo_info = " ".join(p for p in [marca, modelo] if p) or "-"
+            if placa:
+                veiculo_info += f" ({placa})"
             budgets_seen[key] = {
                 "budget_id":    row.get("id_orcamento"),
                 "client_id":    row.get("id_cliente"),
                 "client_name":  row.get("nome") or "N/D",
                 "service_date": _format_date(row.get("data_execucao")),
                 "carro_km":     row.get("carro_km") or "-",
+                "veiculo_info": veiculo_info,
+                "placa":        placa or "-",
                 "status":       row.get("status") or "Sem status",
                 "total_value":  0.0,
                 "itens":        [],
@@ -1245,18 +1270,19 @@ def historico_servicos():
         entry = budgets_seen[key]
         entry["total_value"] = round(entry["total_value"] + float(row.get("valor") or 0), 2)
         entry["itens"].append({
-            "tipo":       row.get("tipo_servico") or "-",
-            "descricao":  row.get("descricao_servico") or "-",
-            "valor":      float(row.get("valor") or 0),
+            "tipo":        row.get("tipo_servico") or "-",
+            "descricao":   row.get("descricao_servico") or "-",
+            "valor":       float(row.get("valor") or 0),
             "responsavel": row.get("responsavel") or "-",
             "observacoes": row.get("observacoes") or "-",
         })
 
     services = [budgets_seen[k] for k in budgets_order]
 
-    # Apenas clientes que possuem serviços registrados, em ordem alfabética
+    # Apenas clientes com serviços, em ordem alfabética
+    all_services_df = dal.get_all_services().merge(clients_df, on="id_cliente", how="left")
     client_ids_with_services = set(
-        services_df["id_cliente"].dropna().astype(int).tolist()
+        all_services_df["id_cliente"].dropna().astype(int).tolist()
     )
     clients = (
         clients_df[clients_df["id_cliente"].isin(client_ids_with_services)]
@@ -1264,11 +1290,24 @@ def historico_servicos():
         .to_dict(orient="records")
     )
 
+    # Placas únicas disponíveis para o filtro (considerando cliente selecionado)
+    placas_df = budgets_df.copy()
+    if selected_client_id:
+        ids_with_client = all_services_df[
+            all_services_df["id_cliente"] == selected_client_id
+        ]["id_orcamento"].dropna().unique()
+        placas_df = placas_df[placas_df["id_orcamento"].isin(ids_with_client)]
+    placas = sorted(
+        p for p in placas_df["placa"].dropna().astype(str).str.strip().unique() if p
+    )
+
     return render_template(
         "historico_servicos.html",
         services=services,
         clients=clients,
         selected_client_id=selected_client_id,
+        selected_placa=selected_placa,
+        placas=placas,
     )
 
 

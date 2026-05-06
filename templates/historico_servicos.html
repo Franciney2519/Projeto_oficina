@@ -9,13 +9,24 @@
 <div class="card mb-3">
   <div class="card-body">
     <form method="get" class="row g-3 align-items-end">
-      <div class="col-md-6 col-lg-4">
+      <div class="col-md-5 col-lg-4">
         <label class="form-label">Cliente</label>
         <select name="cliente" class="form-select">
           <option value="">Todos</option>
           {% for cliente in clients %}
             <option value="{{ cliente.id_cliente }}" {% if cliente.id_cliente == selected_client_id %}selected{% endif %}>
               {{ cliente.nome }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4 col-lg-3">
+        <label class="form-label">Placa</label>
+        <select name="placa" class="form-select">
+          <option value="">Todas</option>
+          {% for placa in placas %}
+            <option value="{{ placa }}" {% if placa == selected_placa %}selected{% endif %}>
+              {{ placa }}
             </option>
           {% endfor %}
         </select>
@@ -34,6 +45,7 @@
         <thead>
           <tr>
             <th>Cliente</th>
+            <th>Veículo</th>
             <th>Nº Orçamento</th>
             <th>Data do Serviço</th>
             <th>KM</th>
@@ -46,6 +58,7 @@
           {% for s in services %}
             <tr>
               <td>{{ s.client_name }}</td>
+              <td>{{ s.veiculo_info }}</td>
               <td>{{ s.budget_id or '-' }}</td>
               <td>{{ s.service_date }}</td>
               <td>{{ s.carro_km }}</td>
@@ -65,7 +78,7 @@
             </tr>
           {% else %}
             <tr>
-              <td colspan="7" class="text-center">Nenhum serviço encontrado para o filtro selecionado.</td>
+              <td colspan="8" class="text-center">Nenhum serviço encontrado para o filtro selecionado.</td>
             </tr>
           {% endfor %}
         </tbody>
@@ -88,6 +101,10 @@
           <div class="col-sm-4">
             <p class="mb-1 text-muted small">Cliente</p>
             <p class="fw-semibold mb-0" id="det-cliente"></p>
+          </div>
+          <div class="col-sm-4">
+            <p class="mb-1 text-muted small">Veículo</p>
+            <p class="fw-semibold mb-0" id="det-veiculo"></p>
           </div>
           <div class="col-sm-4">
             <p class="mb-1 text-muted small">Data do Serviço</p>
@@ -145,6 +162,7 @@ document.querySelectorAll('.btn-detalhes').forEach(function(btn) {
       document.getElementById('modalDetalhesLabel').textContent =
         'Detalhes do Orçamento' + (s.budget_id ? ' #' + s.budget_id : '');
       document.getElementById('det-cliente').textContent = s.client_name || '-';
+      document.getElementById('det-veiculo').textContent = s.veiculo_info || '-';
       document.getElementById('det-data').textContent    = s.service_date || '-';
       document.getElementById('det-km').textContent      =
         s.carro_km && s.carro_km !== '-' ? s.carro_km + ' km' : '-';
