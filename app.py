@@ -1160,7 +1160,7 @@ def historico_servicos():
 
     services_df = dal.get_all_services()
     clients_df = dal.get_all_clients()[["id_cliente", "nome"]]
-    budgets_df = dal.get_all_budgets()[["id_orcamento", "status"]]
+    budgets_df = dal.get_all_budgets()[["id_orcamento", "status", "carro_km"]]
 
     services_df = services_df.merge(clients_df, on="id_cliente", how="left")
     services_df = services_df.merge(budgets_df, on="id_orcamento", how="left")
@@ -1187,6 +1187,7 @@ def historico_servicos():
                 "descricao":     row.get("descricao_servico") or "-",
                 "responsavel":   row.get("responsavel") or "-",
                 "observacoes":   row.get("observacoes") or "-",
+                "carro_km":      row.get("carro_km") or "-",
             }
         )
 

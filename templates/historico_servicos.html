@@ -37,6 +37,7 @@
             <th>Nº Orçamento</th>
             <th>Data do Serviço</th>
             <th>Tipo de Serviço</th>
+            <th>KM</th>
             <th>Valor</th>
             <th>Status</th>
             <th></th>
@@ -49,6 +50,7 @@
               <td>{{ s.budget_id or '-' }}</td>
               <td>{{ s.service_date }}</td>
               <td>{{ s.service_type }}</td>
+              <td>{{ s.carro_km }}</td>
               <td>{{ s.service_value | brl }}</td>
               <td>
                 {% set status_lower = (s.status or '') | lower %}
@@ -108,6 +110,10 @@
             <p class="mb-1 text-muted small">Status</p>
             <p class="fw-semibold mb-0" id="det-status"></p>
           </div>
+          <div class="col-sm-6">
+            <p class="mb-1 text-muted small">KM do Veículo (na data do serviço)</p>
+            <p class="fw-semibold mb-0" id="det-km"></p>
+          </div>
           <div class="col-12"><hr class="my-1"></div>
           <div class="col-12">
             <p class="mb-1 text-muted small">Descrição do Serviço</p>
@@ -145,6 +151,7 @@ document.querySelectorAll('.btn-detalhes').forEach(function(btn) {
     document.getElementById('det-valor').textContent      =
       'R$ ' + Number(s.service_value || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
     document.getElementById('det-status').textContent     = s.status || '-';
+    document.getElementById('det-km').textContent         = s.carro_km && s.carro_km !== '-' ? s.carro_km + ' km' : '-';
     document.getElementById('det-descricao').textContent  = s.descricao || '-';
     document.getElementById('det-responsavel').textContent = s.responsavel || '-';
     document.getElementById('det-observacoes').textContent = s.observacoes || '-';
