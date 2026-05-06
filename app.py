@@ -1172,24 +1172,35 @@ def historico_servicos():
         services_df = services_df[services_df["id_cliente"] == selected_client_id]
 
     services_df = services_df.sort_values("data_execucao", ascending=False)
-    services = []
+
+    # Agrupa por orçamento: uma linha por orçamento, itens no detalhe
+    budgets_seen: dict = {}
+    budgets_order: list = []
     for row in services_df.fillna("").to_dict(orient="records"):
-        services.append(
-            {
-                "id_servico":    row.get("id_servico"),
-                "client_id":     row.get("id_cliente"),
-                "client_name":   row.get("nome") or "N/D",
-                "budget_id":     row.get("id_orcamento"),
-                "service_date":  _format_date(row.get("data_execucao")),
-                "service_type":  row.get("tipo_servico") or "-",
-                "service_value": row.get("valor") or 0,
-                "status":        row.get("status") or "Sem status",
-                "descricao":     row.get("descricao_servico") or "-",
-                "responsavel":   row.get("responsavel") or "-",
-                "observacoes":   row.get("observacoes") or "-",
-                "carro_km":      row.get("carro_km") or "-",
+        key = row.get("id_orcamento") or f"sem_{row.get('id_servico')}"
+        if key not in budgets_seen:
+            budgets_seen[key] = {
+                "budget_id":    row.get("id_orcamento"),
+                "client_id":    row.get("id_cliente"),
+                "client_name":  row.get("nome") or "N/D",
+                "service_date": _format_date(row.get("data_execucao")),
+                "carro_km":     row.get("carro_km") or "-",
+                "status":       row.get("status") or "Sem status",
+                "total_value":  0.0,
+                "items":        [],
             }
-        )
+            budgets_order.append(key)
+        entry = budgets_seen[key]
+        entry["total_value"] = round(entry["total_value"] + float(row.get("valor") or 0), 2)
+        entry["items"].append({
+            "tipo":       row.get("tipo_servico") or "-",
+            "descricao":  row.get("descricao_servico") or "-",
+            "valor":      float(row.get("valor") or 0),
+            "responsavel": row.get("responsavel") or "-",
+            "observacoes": row.get("observacoes") or "-",
+        })
+
+    services = [budgets_seen[k] for k in budgets_order]
 
     # Apenas clientes que possuem serviços registrados, em ordem alfabética
     client_ids_with_services = set(
