@@ -16,6 +16,7 @@ import json
 import os
 import re
 import sys
+import time
 from datetime import datetime
 
 # Carrega variáveis do .env em desenvolvimento local
@@ -95,6 +96,34 @@ app.config["SESSION_COOKIE_SECURE"] = _IS_PRODUCTION
 APP_USERNAME = os.environ.get("APP_USERNAME", "admin")
 APP_PASSWORD = os.environ.get("APP_PASSWORD", "oficina123")
 
+_LOGIN_MAX_ATTEMPTS = 5
+_LOGIN_BLOCK_SECONDS = 300  # 5 minutos
+_login_failures: dict = {}  # ip -> {"count": int, "blocked_until": float}
+
+
+def _get_client_ip() -> str:
+    return request.headers.get("X-Forwarded-For", request.remote_addr or "unknown").split(",")[0].strip()
+
+
+def _is_login_blocked(ip: str) -> tuple[bool, int]:
+    """Retorna (bloqueado, segundos_restantes)."""
+    entry = _login_failures.get(ip)
+    if not entry:
+        return False, 0
+    if entry["count"] >= _LOGIN_MAX_ATTEMPTS:
+        remaining = entry["blocked_until"] - time.monotonic()
+        if remaining > 0:
+            return True, int(remaining) + 1
+        _login_failures.pop(ip, None)
+    return False, 0
+
+
+def _register_login_failure(ip: str) -> None:
+    entry = _login_failures.setdefault(ip, {"count": 0, "blocked_until": 0.0})
+    entry["count"] += 1
+    if entry["count"] >= _LOGIN_MAX_ATTEMPTS:
+        entry["blocked_until"] = time.monotonic() + _LOGIN_BLOCK_SECONDS
+
 
 @app.before_request
 def require_login():
@@ -106,14 +135,31 @@ def require_login():
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    ip = _get_client_ip()
+    blocked, remaining = _is_login_blocked(ip)
+    if blocked:
+        minutes = remaining // 60
+        seconds = remaining % 60
+        error = f"Muitas tentativas. Tente novamente em {minutes}m {seconds}s."
+        return render_template("login.html", error=error)
+
     error = None
     if request.method == "POST":
         if (request.form.get("username") == APP_USERNAME and
                 request.form.get("password") == APP_PASSWORD):
+            _login_failures.pop(ip, None)
             session.clear()
             session["logged_in"] = True
             return redirect("/dashboard")
-        error = "Usuário ou senha incorretos."
+        _register_login_failure(ip)
+        blocked, remaining = _is_login_blocked(ip)
+        if blocked:
+            minutes = remaining // 60
+            seconds = remaining % 60
+            error = f"Muitas tentativas. Conta bloqueada por {minutes}m {seconds}s."
+        else:
+            attempts_left = _LOGIN_MAX_ATTEMPTS - _login_failures[ip]["count"]
+            error = f"Usuário ou senha incorretos. {attempts_left} tentativa(s) restante(s)."
     return render_template("login.html", error=error)
 
 
