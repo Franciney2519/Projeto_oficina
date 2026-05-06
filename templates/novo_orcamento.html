@@ -117,6 +117,22 @@ function formatBRL(v) {
   return 'R$ ' + v.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 }
 
+function aplicarMascaraValor(input) {
+  input.addEventListener('input', function() {
+    let digits = this.value.replace(/\D/g, '');
+    if (!digits) { this.value = ''; return; }
+    let number = parseInt(digits, 10);
+    this.value = (number / 100).toLocaleString('pt-BR', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+  });
+  input.addEventListener('keydown', function(e) {
+    if ([8, 9, 27, 46, 37, 38, 39, 40].includes(e.keyCode)) return;
+    if (!/^\d$/.test(e.key)) e.preventDefault();
+  });
+}
+
 function atualizarTotal() {
   let total = 0;
   listaItens.querySelectorAll('.item-card').forEach(card => {
@@ -189,12 +205,13 @@ function adicionarItem() {
         </div>
         <div class="col-6">
           <label class="form-label small fw-semibold">Valor unit. (R$)</label>
-          <input type="number" step="0.01" min="0" name="item_valor[]"
-                 class="form-control form-control-lg inp-valor" placeholder="0,00">
+          <input type="text" inputmode="numeric" name="item_valor[]"
+                 class="form-control form-control-lg inp-valor" placeholder="0,00" autocomplete="off">
         </div>
       </div>
     </div>`;
   div.querySelectorAll('input').forEach(i => i.addEventListener('input', atualizarTotal));
+  aplicarMascaraValor(div.querySelector('.inp-valor'));
   div.querySelector('.btn-remover').addEventListener('click', () => { div.remove(); atualizarTotal(); });
   listaItens.appendChild(div);
   atualizarTotal();
