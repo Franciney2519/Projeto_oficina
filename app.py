@@ -2405,6 +2405,11 @@ def excluir_despesa_financeira(entry_id: int):
     return redirect(url_for("financeiro"))
 
 
+@app.route("/ajuda")
+def ajuda():
+    return render_template("ajuda.html")
+
+
 if __name__ == "__main__":
     debug_mode = os.environ.get("FLASK_DEBUG") == "1"
 
