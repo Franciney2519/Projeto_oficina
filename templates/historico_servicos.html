@@ -59,7 +59,7 @@
               <td>
                 <button class="btn btn-sm btn-outline-primary btn-detalhes"
                   data-info='{{ s | tojson }}'>
-                  Detalhes ({{ s.items | length }})
+                  Detalhes ({{ s.itens | length }})
                 </button>
               </td>
             </tr>
@@ -155,7 +155,7 @@ document.querySelectorAll('.btn-detalhes').forEach(function(btn) {
       // Montar tabela de itens
       var tbody = document.getElementById('det-itens');
       tbody.innerHTML = '';
-      (s.items || []).forEach(function(item) {
+      (s.itens || []).forEach(function(item) {
         var tr = document.createElement('tr');
         tr.innerHTML =
           '<td>' + (item.tipo || '-') + '</td>' +

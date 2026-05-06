@@ -1187,12 +1187,12 @@ def historico_servicos():
                 "carro_km":     row.get("carro_km") or "-",
                 "status":       row.get("status") or "Sem status",
                 "total_value":  0.0,
-                "items":        [],
+                "itens":        [],
             }
             budgets_order.append(key)
         entry = budgets_seen[key]
         entry["total_value"] = round(entry["total_value"] + float(row.get("valor") or 0), 2)
-        entry["items"].append({
+        entry["itens"].append({
             "tipo":       row.get("tipo_servico") or "-",
             "descricao":  row.get("descricao_servico") or "-",
             "valor":      float(row.get("valor") or 0),
