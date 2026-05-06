@@ -463,6 +463,17 @@ def get_all_financial_entries() -> pd.DataFrame:
         conn.close()
 
 
+def get_financial_entry_by_id(entry_id: int) -> Optional[Dict]:
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM financeiro WHERE id_lancamento = %s", (entry_id,))
+            row = cur.fetchone()
+            return dict(row) if row else None
+    finally:
+        conn.close()
+
+
 def add_financial_entry(data: Dict) -> int:
     data.pop("id_lancamento", None)
     for optional_int_col in ("relacionado_orcamento_id", "relacionado_servico_id"):
@@ -504,6 +515,18 @@ def update_financial_entry(entry_id: int, data: Dict) -> bool:
             updated = cur.rowcount > 0
         conn.commit()
         return updated
+    finally:
+        conn.close()
+
+
+def delete_financial_entry(entry_id: int) -> bool:
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM financeiro WHERE id_lancamento = %s", (entry_id,))
+            deleted = cur.rowcount > 0
+        conn.commit()
+        return deleted
     finally:
         conn.close()
 

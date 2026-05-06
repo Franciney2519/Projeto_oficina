@@ -28,3 +28,5 @@ dados_clientes.xlsx
 dados_financeiro.xlsx
 dados_orcamentos.xlsx
 dados_servicos.xlsx
+# Arquivo SQL local de apoio (não versionar)
+supabase_rls_policies_minimas.sql

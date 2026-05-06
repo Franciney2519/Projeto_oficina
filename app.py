@@ -618,6 +618,58 @@ def _sync_completed_budget_financial_entries_safely() -> int:
         return 0
 
 
+def _split_expense_category(category_value: str) -> Tuple[str, str]:
+    """Separa o texto salvo no financeiro em tipo e categoria da despesa."""
+    text = str(category_value or "").strip()
+    for expense_type, categories in FINANCE_EXPENSE_TYPES.items():
+        prefix = f"{expense_type} - "
+        if text.startswith(prefix):
+            category = text[len(prefix):]
+            if category in categories:
+                return expense_type, category
+    return "", ""
+
+
+def _build_expense_payload_from_form(form) -> Tuple[Optional[dict], Optional[str]]:
+    data = form.get("data_saida", "").strip()
+    tipo_despesa = form.get("tipo_despesa", "").strip()
+    categoria = form.get("categoria", "").strip()
+    descricao = form.get("descricao", "").strip()
+
+    try:
+        valor = _parse_brl_number(form.get("valor", "0"))
+    except ValueError:
+        return None, "Valor inválido. Use apenas números (ex.: 278,00)."
+
+    try:
+        data_saida = _parse_date(data)
+    except ValueError:
+        return None, "Data inválida para a despesa."
+    if valor <= 0:
+        return None, "Informe um valor maior que zero para a despesa."
+    if tipo_despesa not in FINANCE_EXPENSE_TYPES:
+        return None, "Selecione um tipo de despesa válido."
+    if categoria not in FINANCE_EXPENSE_TYPES[tipo_despesa]:
+        return None, "Selecione uma categoria correspondente ao tipo escolhido."
+    if not descricao:
+        return None, "Informe uma descrição para a despesa."
+
+    return {
+        "data": data_saida.strftime("%Y-%m-%d"),
+        "tipo_lancamento": "Saída",
+        "categoria": f"{tipo_despesa} - {categoria}",
+        "descricao": descricao,
+        "valor": valor,
+        "relacionado_orcamento_id": None,
+        "relacionado_servico_id": None,
+    }, None
+
+
+def _is_expense_entry(entry: dict) -> bool:
+    value = str((entry or {}).get("tipo_lancamento") or "").strip().lower()
+    return _normalize_status(value) == "saida" or value in {"sa?da", "sa�da"}
+
+
 
 @app.route("/")
 def landing():
@@ -1000,6 +1052,22 @@ def funcionarios():
         if not nome:
             flash("Informe o nome do funcionário.", "warning")
             return redirect(url_for("funcionarios"))
+
+        employees_df = dal.get_all_employees().fillna("")
+        nome_lower = nome.lower()
+        duplicates = employees_df[employees_df["nome"].str.strip().str.lower() == nome_lower]
+        if not duplicates.empty:
+            existing = duplicates.iloc[0]
+            ativo_val = str(existing.get("ativo", "")).strip().lower()
+            status_str = "Inativo" if ativo_val in {"false", "0", "nao", "não"} else "Ativo"
+            flash(
+                f'Já existe um funcionário cadastrado com o nome "{existing["nome"]}" '
+                f'(Status: {status_str}). Use o botão "Editar" para atualizar os dados.',
+                "warning",
+            )
+            employees = employees_df.to_dict(orient="records")
+            return render_template("funcionarios.html", employees=employees)
+
         payload = {field: request.form.get(field, "").strip() for field in EMPLOYEE_FIELDS}
         payload["ativo"] = True
         dal.add_employee(payload)
@@ -1009,6 +1077,18 @@ def funcionarios():
     employees_df = dal.get_all_employees().fillna("")
     employees = employees_df.to_dict(orient="records")
     return render_template("funcionarios.html", employees=employees)
+
+
+@app.route("/funcionarios/<int:employee_id>/editar", methods=["POST"])
+def editar_funcionario(employee_id: int):
+    employee = dal.get_employee_by_id(employee_id)
+    if not employee:
+        flash("Funcionário não encontrado.", "danger")
+        return redirect(url_for("funcionarios"))
+    payload = {field: request.form.get(field, "").strip() for field in EMPLOYEE_FIELDS}
+    dal.update_employee(employee_id, payload)
+    flash("Dados do funcionário atualizados com sucesso.", "success")
+    return redirect(url_for("funcionarios"))
 
 
 @app.route("/funcionarios/<int:employee_id>/toggle", methods=["POST"])
@@ -2018,43 +2098,13 @@ def efetivar_orcamento(budget_id: int):
 @app.route("/financeiro", methods=["GET", "POST"])
 def financeiro():
     if request.method == "POST":
-        data = request.form.get("data_saida", "").strip()
-        tipo_despesa = request.form.get("tipo_despesa", "").strip()
-        categoria = request.form.get("categoria", "").strip()
-        descricao = request.form.get("descricao", "").strip()
-        try:
-            valor = _parse_brl_number(request.form.get("valor", "0"))
-        except ValueError:
-            flash("Valor inválido. Use apenas números (ex.: 278,00).", "danger")
+        payload, error = _build_expense_payload_from_form(request.form)
+        if error:
+            flash(error, "danger")
             return redirect(url_for("financeiro"))
 
         try:
-            data_saida = _parse_date(data)
-        except ValueError:
-            flash("Data inválida para a despesa.", "danger")
-            return redirect(url_for("financeiro"))
-        if valor <= 0:
-            flash("Informe um valor maior que zero para a despesa.", "danger")
-            return redirect(url_for("financeiro"))
-        if tipo_despesa not in FINANCE_EXPENSE_TYPES:
-            flash("Selecione um tipo de despesa válido.", "danger")
-            return redirect(url_for("financeiro"))
-        if categoria not in FINANCE_EXPENSE_TYPES[tipo_despesa]:
-            flash("Selecione uma categoria correspondente ao tipo escolhido.", "danger")
-            return redirect(url_for("financeiro"))
-
-        try:
-            dal.add_financial_entry(
-                {
-                    "data": data_saida.strftime("%Y-%m-%d"),
-                    "tipo_lancamento": "Saída",
-                    "categoria": f"{tipo_despesa} - {categoria}",
-                    "descricao": descricao,
-                    "valor": valor,
-                    "relacionado_orcamento_id": None,
-                    "relacionado_servico_id": None,
-                }
-            )
+            dal.add_financial_entry(payload)
         except Exception:
             app.logger.exception("Erro ao salvar despesa no financeiro.")
             flash("Não foi possível salvar a despesa. Verifique as configurações do banco e tente novamente.", "danger")
@@ -2085,6 +2135,7 @@ def financeiro():
     entries = []
     for entry in entries_df.to_dict(orient="records"):
         entry["data_formatada"] = _format_date(entry["data"])
+        entry["is_expense"] = _is_expense_entry(entry)
         entries.append(entry)
 
     return render_template(
@@ -2099,6 +2150,51 @@ def financeiro():
         expense_types=FINANCE_EXPENSE_TYPES,
         today_str=datetime.today().strftime("%Y-%m-%d"),
     )
+
+
+@app.route("/financeiro/<int:entry_id>/editar", methods=["GET", "POST"])
+def editar_despesa_financeira(entry_id: int):
+    entry = dal.get_financial_entry_by_id(entry_id)
+    if not entry:
+        flash("Lançamento financeiro não encontrado.", "danger")
+        return redirect(url_for("financeiro"))
+    if not _is_expense_entry(entry):
+        flash("Apenas despesas podem ser editadas por esta tela.", "warning")
+        return redirect(url_for("financeiro"))
+
+    if request.method == "POST":
+        payload, error = _build_expense_payload_from_form(request.form)
+        if error:
+            flash(error, "danger")
+            return redirect(url_for("editar_despesa_financeira", entry_id=entry_id))
+
+        dal.update_financial_entry(entry_id, payload)
+        flash("Despesa atualizada com sucesso.", "success")
+        return redirect(url_for("financeiro"))
+
+    tipo_despesa, categoria = _split_expense_category(entry.get("categoria", ""))
+    return render_template(
+        "editar_despesa.html",
+        entry=entry,
+        expense_types=FINANCE_EXPENSE_TYPES,
+        selected_type=tipo_despesa,
+        selected_category=categoria,
+    )
+
+
+@app.route("/financeiro/<int:entry_id>/excluir", methods=["POST"])
+def excluir_despesa_financeira(entry_id: int):
+    entry = dal.get_financial_entry_by_id(entry_id)
+    if not entry:
+        flash("Lançamento financeiro não encontrado.", "danger")
+        return redirect(url_for("financeiro"))
+    if not _is_expense_entry(entry):
+        flash("Apenas despesas podem ser excluídas por esta tela.", "warning")
+        return redirect(url_for("financeiro"))
+
+    dal.delete_financial_entry(entry_id)
+    flash("Despesa excluída com sucesso.", "success")
+    return redirect(url_for("financeiro"))
 
 
 if __name__ == "__main__":

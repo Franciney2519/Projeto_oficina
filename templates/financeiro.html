@@ -37,6 +37,7 @@
                 <th>Categoria</th>
                 <th>Descrição</th>
                 <th>Valor</th>
+                <th>Ações</th>
               </tr>
             </thead>
             <tbody>
@@ -47,10 +48,25 @@
                   <td>{{ entry.categoria }}</td>
                   <td>{{ entry.descricao }}</td>
                   <td>R$ {{ '%.2f'|format(entry.valor or 0) }}</td>
+                  <td>
+                    {% if entry.is_expense %}
+                      <div class="d-flex gap-2">
+                        <a href="{{ url_for('editar_despesa_financeira', entry_id=entry.id_lancamento) }}"
+                           class="btn btn-sm btn-outline-primary">Editar</a>
+                        <form method="post"
+                              action="{{ url_for('excluir_despesa_financeira', entry_id=entry.id_lancamento) }}"
+                              onsubmit="return confirm('Excluir esta despesa?')">
+                          <button type="submit" class="btn btn-sm btn-outline-danger">Excluir</button>
+                        </form>
+                      </div>
+                    {% else %}
+                      <span class="text-muted small">Automático</span>
+                    {% endif %}
+                  </td>
                 </tr>
               {% else %}
                 <tr>
-                  <td colspan="5" class="text-center">Nenhum lançamento encontrado.</td>
+                  <td colspan="6" class="text-center">Nenhum lançamento encontrado.</td>
                 </tr>
               {% endfor %}
             </tbody>
