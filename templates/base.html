@@ -81,6 +81,37 @@
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+      function formatCpfCnpj(value) {
+        const digits = (value || '').replace(/\D/g, '').slice(0, 14);
+        if (digits.length > 11) {
+          return digits
+            .replace(/^(\d{2})(\d)/, '$1.$2')
+            .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
+            .replace(/\.(\d{3})(\d)/, '.$1/$2')
+            .replace(/(\d{4})(\d)/, '$1-$2');
+        }
+
+        return digits
+          .replace(/^(\d{3})(\d)/, '$1.$2')
+          .replace(/^(\d{3})\.(\d{3})(\d)/, '$1.$2.$3')
+          .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+      }
+
+      function applyCpfCnpjMask(input) {
+        input.value = formatCpfCnpj(input.value);
+      }
+
+      document.addEventListener('input', function(event) {
+        if (event.target.classList.contains('cpf-cnpj-mask')) {
+          applyCpfCnpjMask(event.target);
+        }
+      });
+
+      document.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll('.cpf-cnpj-mask').forEach(applyCpfCnpjMask);
+      });
+    </script>
     {% block scripts %}{% endblock %}
   </body>
 </html>

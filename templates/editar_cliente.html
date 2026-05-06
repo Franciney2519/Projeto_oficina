@@ -12,6 +12,7 @@
         <form method="post">
           {% for field, label in [
             ('nome', 'Nome completo'),
+            ('cpf_cnpj', 'CPF/CNPJ'),
             ('telefone_whatsapp', 'Telefone/WhatsApp'),
             ('email', 'Email'),
             ('endereco_rua', 'Rua'),
@@ -23,7 +24,11 @@
           ] %}
             <div class="mb-2">
               <label class="form-label">{{ label }}</label>
-              <input type="text" class="form-control" name="{{ field }}" value="{{ client[field] or '' }}">
+              <input type="text"
+                     class="form-control{% if field == 'cpf_cnpj' %} cpf-cnpj-mask{% endif %}"
+                     name="{{ field }}"
+                     value="{{ client[field] or '' }}"
+                     {% if field == 'cpf_cnpj' %}inputmode="numeric" maxlength="18" placeholder="CPF ou CNPJ" autocomplete="off"{% endif %}>
             </div>
           {% endfor %}
           <div class="mb-3">

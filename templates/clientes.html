@@ -11,6 +11,7 @@
             <thead>
               <tr>
                 <th>Nome</th>
+                <th>CPF/CNPJ</th>
                 <th>WhatsApp</th>
                 <th>Veículos</th>
                 <th>Ações</th>
@@ -20,6 +21,7 @@
               {% for cliente in clients %}
                 <tr>
                   <td>{{ cliente.nome }}</td>
+                  <td>{{ cliente.cpf_cnpj }}</td>
                   <td>{{ cliente.telefone_whatsapp }}</td>
                   <td>
                     {% for v in cliente.veiculos %}
@@ -35,7 +37,7 @@
                 </tr>
               {% else %}
                 <tr>
-                  <td colspan="4" class="text-center">Nenhum cliente cadastrado.</td>
+                  <td colspan="5" class="text-center">Nenhum cliente cadastrado.</td>
                 </tr>
               {% endfor %}
             </tbody>
@@ -52,6 +54,7 @@
         <form method="post">
           {% for field, label in [
             ('nome', 'Nome completo'),
+            ('cpf_cnpj', 'CPF/CNPJ'),
             ('telefone_whatsapp', 'Telefone/WhatsApp'),
             ('email', 'Email'),
             ('endereco_rua', 'Rua'),
@@ -63,7 +66,11 @@
           ] %}
             <div class="mb-2">
               <label class="form-label">{{ label }}</label>
-              <input type="text" name="{{ field }}" class="form-control" {% if field == 'nome' %}required{% endif %}>
+              <input type="text"
+                     name="{{ field }}"
+                     class="form-control{% if field == 'cpf_cnpj' %} cpf-cnpj-mask{% endif %}"
+                     {% if field == 'cpf_cnpj' %}inputmode="numeric" maxlength="18" placeholder="CPF ou CNPJ" autocomplete="off"{% endif %}
+                     {% if field == 'nome' %}required{% endif %}>
             </div>
           {% endfor %}
 

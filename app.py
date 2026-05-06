@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from datetime import datetime
 
@@ -152,6 +153,7 @@ COMMERCIAL_TERMS_TEXT = (
     "Forma de pagamento: Transferência bancária, boleto ou cartão de crédito."
 )
 FINALIZED_BUDGET_STATUSES = {"concluido", "finalizado"}
+FINANCIAL_ENTRY_CATEGORY_BUDGET = "Serviço Oficina"
 FINANCE_EXPENSE_TYPES = {
     "Despesas Fixas": [
         "Infraestrutura - Aluguel do ponto comercial",
@@ -382,6 +384,240 @@ def _format_date(date_value) -> str:
         return str(date_value)
 
 
+def _format_cpf_cnpj(value: str) -> str:
+    """Aplica máscara de CPF ou CNPJ conforme a quantidade de dígitos."""
+    digits = "".join(ch for ch in str(value or "") if ch.isdigit())
+    if not digits:
+        return ""
+
+    if len(digits) > 11:
+        digits = digits[:14]
+        if len(digits) <= 2:
+            return digits
+        if len(digits) <= 5:
+            return f"{digits[:2]}.{digits[2:]}"
+        if len(digits) <= 8:
+            return f"{digits[:2]}.{digits[2:5]}.{digits[5:]}"
+        if len(digits) <= 12:
+            return f"{digits[:2]}.{digits[2:5]}.{digits[5:8]}/{digits[8:]}"
+        return f"{digits[:2]}.{digits[2:5]}.{digits[5:8]}/{digits[8:12]}-{digits[12:]}"
+
+    digits = digits[:11]
+    if len(digits) <= 3:
+        return digits
+    if len(digits) <= 6:
+        return f"{digits[:3]}.{digits[3:]}"
+    if len(digits) <= 9:
+        return f"{digits[:3]}.{digits[3:6]}.{digits[6:]}"
+    return f"{digits[:3]}.{digits[3:6]}.{digits[6:9]}-{digits[9:]}"
+
+
+def _coerce_int(value) -> Optional[int]:
+    """Converte valores vindos do banco/DataFrame para inteiro, preservando vazio."""
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except TypeError:
+        pass
+    text = str(value).strip()
+    if not text or text.lower() in {"nan", "none", "null"}:
+        return None
+    try:
+        return int(float(text))
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_float(value) -> float:
+    try:
+        if value is None or pd.isna(value):
+            return 0.0
+    except TypeError:
+        pass
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _repair_financial_text(value) -> str:
+    """Corrige textos financeiros antigos que foram gravados com '?' no lugar de acentos."""
+    if value is None:
+        return ""
+    text = str(value)
+    replacements = {
+        "Or?amento": "Orçamento",
+        "or?amento": "orçamento",
+        "Servi?o": "Serviço",
+        "servi?o": "serviço",
+        "Sa?da": "Saída",
+        "sa?da": "saída",
+        "Entrada": "Entrada",
+        "Descri??o": "Descrição",
+        "descri??o": "descrição",
+        "Cr?dito": "Crédito",
+        "cr?dito": "crédito",
+        "D?bito": "Débito",
+        "d?bito": "débito",
+        "Cart?o": "Cartão",
+        "cart?o": "cartão",
+        "N?o": "Não",
+        "n?o": "não",
+        "Or�amento": "Orçamento",
+        "Servi�o": "Serviço",
+        "Sa�da": "Saída",
+        "Descri��o": "Descrição",
+    }
+    for source, target in replacements.items():
+        text = text.replace(source, target)
+    return text
+
+
+def _budget_financial_description(budget_id: int, client_name: str) -> str:
+    client_name = str(client_name or "").strip() or "Cliente não informado"
+    return f"Orçamento #{budget_id} - {client_name}"
+
+
+def _budget_financial_date(budget: dict) -> str:
+    for field in ("data_conclusao", "data_aprovacao", "data_criacao"):
+        value = budget.get(field)
+        try:
+            if pd.isna(value):
+                continue
+        except TypeError:
+            pass
+        text = str(value or "").strip()
+        if text and text.lower() not in {"nan", "none", "null"}:
+            return text
+    return datetime.today().strftime("%Y-%m-%d")
+
+
+def _find_budget_id_in_financial_entry(entry: dict) -> Optional[int]:
+    related_budget_id = _coerce_int(entry.get("relacionado_orcamento_id"))
+    if related_budget_id:
+        return related_budget_id
+
+    description = str(entry.get("descricao") or "")
+    match = re.search(r"#\s*(\d+)", description)
+    if match:
+        return int(match.group(1))
+    return None
+
+
+def _build_financial_entries_by_budget(financial_df: pd.DataFrame) -> dict:
+    entries_by_budget = {}
+    if financial_df.empty:
+        return entries_by_budget
+
+    for entry in financial_df.to_dict(orient="records"):
+        if _normalize_status(entry.get("tipo_lancamento")) != "entrada":
+            continue
+        budget_id = _find_budget_id_in_financial_entry(entry)
+        if budget_id and budget_id not in entries_by_budget:
+            entries_by_budget[budget_id] = entry
+    return entries_by_budget
+
+
+def _sync_completed_budget_financial_entries() -> int:
+    """Garante entrada financeira para todo orçamento concluído, sem duplicar."""
+    changes = 0
+    budgets_df = dal.get_all_budgets()
+    financial_df = dal.get_all_financial_entries()
+
+    if financial_df.empty:
+        financial_df = pd.DataFrame(columns=dal.FINANCEIRO_COLUMNS)
+
+    # Corrige textos antigos de lançamentos manuais ou gerados antes do ajuste.
+    for entry in financial_df.to_dict(orient="records"):
+        entry_id = _coerce_int(entry.get("id_lancamento"))
+        if not entry_id:
+            continue
+        updates = {}
+        repaired_description = _repair_financial_text(entry.get("descricao"))
+        repaired_category = _repair_financial_text(entry.get("categoria"))
+        if repaired_description != (entry.get("descricao") or ""):
+            updates["descricao"] = repaired_description
+        if repaired_category != (entry.get("categoria") or ""):
+            updates["categoria"] = repaired_category
+        if updates:
+            dal.update_financial_entry(entry_id, updates)
+            changes += 1
+            for key, value in updates.items():
+                entry[key] = value
+
+    if budgets_df.empty:
+        return changes
+
+    clients_df = dal.get_all_clients()
+    client_names = {}
+    if not clients_df.empty:
+        for client in clients_df.to_dict(orient="records"):
+            client_id = _coerce_int(client.get("id_cliente"))
+            if client_id:
+                client_names[client_id] = client.get("nome", "")
+
+    entries_by_budget = _build_financial_entries_by_budget(financial_df)
+
+    for budget in budgets_df.to_dict(orient="records"):
+        if not _is_budget_finalized(budget.get("status")):
+            continue
+
+        budget_id = _coerce_int(budget.get("id_orcamento"))
+        if not budget_id:
+            continue
+
+        client_name = client_names.get(_coerce_int(budget.get("id_cliente")), "")
+        payload = {
+            "data": _budget_financial_date(budget),
+            "tipo_lancamento": "Entrada",
+            "categoria": FINANCIAL_ENTRY_CATEGORY_BUDGET,
+            "descricao": _budget_financial_description(budget_id, client_name),
+            "valor": _coerce_float(budget.get("valor_total")),
+            "relacionado_orcamento_id": budget_id,
+            "relacionado_servico_id": None,
+        }
+
+        existing_entry = entries_by_budget.get(budget_id)
+        if not existing_entry:
+            new_id = dal.add_financial_entry(payload)
+            payload["id_lancamento"] = new_id
+            entries_by_budget[budget_id] = payload
+            changes += 1
+            continue
+
+        entry_id = _coerce_int(existing_entry.get("id_lancamento"))
+        if not entry_id:
+            continue
+
+        updates = {}
+        for field in ("data", "tipo_lancamento", "categoria", "descricao"):
+            if str(existing_entry.get(field) or "") != str(payload[field]):
+                updates[field] = payload[field]
+        if round(_coerce_float(existing_entry.get("valor")), 2) != round(payload["valor"], 2):
+            updates["valor"] = payload["valor"]
+        if _coerce_int(existing_entry.get("relacionado_orcamento_id")) != budget_id:
+            updates["relacionado_orcamento_id"] = budget_id
+        if _coerce_int(existing_entry.get("relacionado_servico_id")) is not None:
+            updates["relacionado_servico_id"] = None
+
+        if updates:
+            dal.update_financial_entry(entry_id, updates)
+            existing_entry.update(updates)
+            changes += 1
+
+    return changes
+
+
+def _sync_completed_budget_financial_entries_safely() -> int:
+    try:
+        return _sync_completed_budget_financial_entries()
+    except Exception:  # pylint: disable=broad-except
+        app.logger.exception("Falha ao sincronizar orçamentos concluídos com o financeiro.")
+        return 0
+
+
 
 @app.route("/")
 def landing():
@@ -397,6 +633,7 @@ def enter_app():
 
 @app.route("/dashboard")
 def dashboard():
+    _sync_completed_budget_financial_entries_safely()
     clients_df = dal.get_all_clients()
     budgets_df = dal.get_all_budgets()
     financial_df = dal.get_all_financial_entries()
@@ -498,6 +735,7 @@ def dashboard():
 
 CLIENT_FIELDS = [
     "nome",
+    "cpf_cnpj",
     "telefone_whatsapp",
     "email",
     "endereco_rua",
@@ -545,6 +783,7 @@ def _get_veiculo_for_orcamento(budget: dict, client: dict) -> dict:
 def clientes():
     if request.method == "POST":
         payload = {field: request.form.get(field, "").strip() for field in CLIENT_FIELDS}
+        payload["cpf_cnpj"] = _format_cpf_cnpj(payload.get("cpf_cnpj"))
         if not payload.get("nome"):
             flash("Informe o nome do cliente para realizar o cadastro.", "danger")
             return redirect(url_for("clientes"))
@@ -594,6 +833,7 @@ def editar_cliente(client_id: int):
 
     if request.method == "POST":
         updates = {field: request.form.get(field, "").strip() for field in CLIENT_FIELDS}
+        updates["cpf_cnpj"] = _format_cpf_cnpj(updates.get("cpf_cnpj"))
         dal.update_client(client_id, updates)
         flash("Cliente atualizado com sucesso!", "success")
         return redirect(url_for("clientes"))
@@ -1368,6 +1608,7 @@ def novo_orcamento():
 
 @app.route("/orcamentos")
 def listar_orcamentos():
+    _sync_completed_budget_financial_entries_safely()
     budgets_df = dal.get_all_budgets()
     clients_df = dal.get_all_clients()[["id_cliente", "nome"]]
     merged = budgets_df.merge(clients_df, left_on="id_cliente", right_on="id_cliente", how="left")
@@ -1739,11 +1980,11 @@ def efetivar_orcamento(budget_id: int):
                 {
                     "data": data_status.strftime("%Y-%m-%d"),
                     "tipo_lancamento": "Entrada",
-                    "categoria": "Serviço Oficina",
+                    "categoria": FINANCIAL_ENTRY_CATEGORY_BUDGET,
                     "descricao": f"Orçamento #{budget_id} - {client['nome']}",
                     "valor": valor_final,
                     "relacionado_orcamento_id": budget_id,
-                    "relacionado_servico_id": "",
+                    "relacionado_servico_id": None,
                 }
             )
         else:
@@ -1777,16 +2018,24 @@ def efetivar_orcamento(budget_id: int):
 @app.route("/financeiro", methods=["GET", "POST"])
 def financeiro():
     if request.method == "POST":
-        data = request.form.get("data_saida")
-        tipo_despesa = request.form.get("tipo_despesa")
-        categoria = request.form.get("categoria")
-        descricao = request.form.get("descricao")
+        data = request.form.get("data_saida", "").strip()
+        tipo_despesa = request.form.get("tipo_despesa", "").strip()
+        categoria = request.form.get("categoria", "").strip()
+        descricao = request.form.get("descricao", "").strip()
         try:
             valor = _parse_brl_number(request.form.get("valor", "0"))
         except ValueError:
             flash("Valor inválido. Use apenas números (ex.: 278,00).", "danger")
             return redirect(url_for("financeiro"))
 
+        try:
+            data_saida = _parse_date(data)
+        except ValueError:
+            flash("Data inválida para a despesa.", "danger")
+            return redirect(url_for("financeiro"))
+        if valor <= 0:
+            flash("Informe um valor maior que zero para a despesa.", "danger")
+            return redirect(url_for("financeiro"))
         if tipo_despesa not in FINANCE_EXPENSE_TYPES:
             flash("Selecione um tipo de despesa válido.", "danger")
             return redirect(url_for("financeiro"))
@@ -1797,13 +2046,13 @@ def financeiro():
         try:
             dal.add_financial_entry(
                 {
-                    "data": _parse_date(data).strftime("%Y-%m-%d"),
+                    "data": data_saida.strftime("%Y-%m-%d"),
                     "tipo_lancamento": "Saída",
                     "categoria": f"{tipo_despesa} - {categoria}",
                     "descricao": descricao,
                     "valor": valor,
-                    "relacionado_orcamento_id": "",
-                    "relacionado_servico_id": "",
+                    "relacionado_orcamento_id": None,
+                    "relacionado_servico_id": None,
                 }
             )
         except Exception:
@@ -1814,6 +2063,7 @@ def financeiro():
         flash("Despesa registrada com sucesso.", "success")
         return redirect(url_for("financeiro"))
 
+    _sync_completed_budget_financial_entries_safely()
     data_inicio = request.args.get("data_inicio")
     data_fim = request.args.get("data_fim")
     tipo = request.args.get("tipo")
@@ -1847,6 +2097,7 @@ def financeiro():
         data_fim=data_fim,
         tipo=tipo,
         expense_types=FINANCE_EXPENSE_TYPES,
+        today_str=datetime.today().strftime("%Y-%m-%d"),
     )
 
 

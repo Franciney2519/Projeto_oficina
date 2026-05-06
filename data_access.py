@@ -31,7 +31,7 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
 # Colunas mantidas para compatibilidade com o restante do app
 CLIENT_COLUMNS = [
-    "id_cliente", "nome", "telefone_whatsapp", "email",
+    "id_cliente", "nome", "cpf_cnpj", "telefone_whatsapp", "email",
     "endereco_rua", "endereco_numero", "endereco_bairro",
     "endereco_cidade", "endereco_uf", "endereco_cep",
     "carro_marca", "carro_modelo", "carro_ano", "carro_placa", "observacoes",
@@ -80,6 +80,7 @@ def init_db() -> None:
                 CREATE TABLE IF NOT EXISTS clientes (
                     id_cliente      SERIAL PRIMARY KEY,
                     nome            TEXT,
+                    cpf_cnpj        TEXT,
                     telefone_whatsapp TEXT,
                     email           TEXT,
                     endereco_rua    TEXT,
@@ -95,6 +96,7 @@ def init_db() -> None:
                     observacoes     TEXT
                 )
             """)
+            cur.execute("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS cpf_cnpj TEXT")
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS veiculos (
                     id_veiculo  SERIAL PRIMARY KEY,
@@ -463,6 +465,9 @@ def get_all_financial_entries() -> pd.DataFrame:
 
 def add_financial_entry(data: Dict) -> int:
     data.pop("id_lancamento", None)
+    for optional_int_col in ("relacionado_orcamento_id", "relacionado_servico_id"):
+        if data.get(optional_int_col) == "":
+            data[optional_int_col] = None
     cols = [c for c in FINANCEIRO_COLUMNS if c != "id_lancamento"]
     values = [data.get(c) for c in cols]
     sql = (
@@ -476,6 +481,29 @@ def add_financial_entry(data: Dict) -> int:
             new_id = cur.fetchone()["id_lancamento"]
         conn.commit()
         return new_id
+    finally:
+        conn.close()
+
+
+def update_financial_entry(entry_id: int, data: Dict) -> bool:
+    data.pop("id_lancamento", None)
+    for optional_int_col in ("relacionado_orcamento_id", "relacionado_servico_id"):
+        if data.get(optional_int_col) == "":
+            data[optional_int_col] = None
+    if not data:
+        return False
+    set_clause = ", ".join(f"{k} = %s" for k in data)
+    values = list(data.values()) + [entry_id]
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"UPDATE financeiro SET {set_clause} WHERE id_lancamento = %s",
+                values,
+            )
+            updated = cur.rowcount > 0
+        conn.commit()
+        return updated
     finally:
         conn.close()
 
