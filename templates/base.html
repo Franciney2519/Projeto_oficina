@@ -49,9 +49,9 @@
               <a class="nav-link" href="{{ url_for('financeiro') }}">Financeiro</a>
             </li>
           </ul>
-          <div class="d-flex align-items-center gap-2">
+          <div class="d-grid gap-2 d-lg-flex align-items-lg-center mt-2 mt-lg-0">
             <form action="{{ url_for('atualizar_base') }}" method="post" class="mb-0">
-              <button class="btn btn-outline-light btn-sm" type="submit" title="Recarrega os dados salvos nos arquivos.">
+              <button class="btn btn-outline-light btn-sm w-100" type="submit" title="Recarrega os dados salvos nos arquivos.">
                 Atualizar base
               </button>
             </form>

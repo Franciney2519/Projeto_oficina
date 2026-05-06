@@ -11,23 +11,28 @@
         <p><strong>Veículo:</strong> {{ veiculo.marca }} {{ veiculo.modelo }} {{ veiculo.ano }}{% if veiculo.placa %} ({{ veiculo.placa }}){% endif %}</p>
         <p><strong>Cor / KM informados:</strong> {{ budget.carro_cor or veiculo.cor or 'N/D' }} / {{ budget.carro_km or 'N/D' }}</p>
         <p><strong>Responsável planejado:</strong> {{ budget.responsavel_planejado_nome or 'N/D' }}</p>
-        <p><strong>Forma de pagamento:</strong> {{ forma_pagamento }}{% if taxa > 0 %} (taxa R$ {{ '%.2f'|format(taxa) }}){% endif %}</p>
-        <p><strong>Valor dos itens:</strong> R$ {{ '%.2f'|format(base_total) }}</p>
-        <p><strong>Valor final apresentado ao cliente:</strong> R$ {{ '%.2f'|format(final_total) }}</p>
+        <p><strong>Forma de pagamento:</strong> {{ forma_pagamento }}{% if taxa > 0 %} (taxa {{ taxa | brl }}){% endif %}</p>
+        <p><strong>Valor dos itens:</strong> {{ base_total | brl }}</p>
+        <p><strong>Valor final apresentado ao cliente:</strong> {{ final_total | brl }}</p>
 
         <h6>Itens</h6>
         <ul class="list-group mb-3">
           {% for item in items %}
-            <li class="list-group-item d-flex justify-content-between align-items-center">
-              <div>
-                <strong>{{ item.descricao }}</strong><br>
-                <small>{{ item.tipo }}</small>
+            <li class="list-group-item">
+              <div class="d-flex justify-content-between align-items-start flex-wrap gap-1">
+                <div>
+                  <strong>{{ item.descricao }}</strong><br>
+                  <small class="text-muted">{{ item.tipo }}</small>
+                </div>
+                <div class="text-end text-nowrap">
+                  <small class="text-muted">{{ item.quantidade }} x {{ item.valor_unitario | brl }}</small><br>
+                  <strong>{{ item.subtotal | brl }}</strong>
+                </div>
               </div>
-              <span>{{ item.quantidade }} x R$ {{ '%.2f'|format(item.valor_unitario) }} = R$ {{ '%.2f'|format(item.subtotal) }}</span>
             </li>
           {% endfor %}
         </ul>
-        <h5>Total: R$ {{ '%.2f'|format(final_total) }}</h5>
+        <h5>Total: {{ final_total | brl }}</h5>
       </div>
     </div>
 

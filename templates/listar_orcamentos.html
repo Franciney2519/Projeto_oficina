@@ -7,7 +7,7 @@
 </div>
 
 <div class="table-responsive">
-  <table class="table table-hover">
+  <table class="table table-hover table-striped align-middle">
     <thead>
       <tr>
         <th>#</th>
@@ -34,24 +34,26 @@
           </td>
           <td>{{ orcamento.valor_total | brl }}</td>
           <td>
-            <a href="{{ url_for('detalhes_orcamento', budget_id=orcamento.id_orcamento) }}" class="btn btn-sm btn-outline-secondary">Detalhes</a>
-            {% if orcamento.can_editar %}
-              <a href="{{ url_for('editar_orcamento', budget_id=orcamento.id_orcamento) }}" class="btn btn-sm btn-outline-primary">Editar</a>
-            {% else %}
-              <button class="btn btn-sm btn-outline-primary" disabled title="Orçamento concluído.">Editar</button>
-            {% endif %}
-            {% if orcamento.can_efetivar %}
-              <a href="{{ url_for('efetivar_orcamento', budget_id=orcamento.id_orcamento) }}" class="btn btn-sm btn-success">Efetivar</a>
-            {% else %}
-              <button class="btn btn-sm btn-success" disabled title="Orçamento já concluído.">Efetivar</button>
-            {% endif %}
-            {% if orcamento.can_reprovar %}
-              <form action="{{ url_for('reprovar_orcamento', budget_id=orcamento.id_orcamento) }}" method="post" class="d-inline">
-                <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Confirmar reprovação?')">Reprovar</button>
-              </form>
-            {% else %}
-              <button class="btn btn-sm btn-danger" disabled title="Orçamento concluído.">Reprovar</button>
-            {% endif %}
+            <div class="d-flex flex-wrap gap-1">
+              <a href="{{ url_for('detalhes_orcamento', budget_id=orcamento.id_orcamento) }}" class="btn btn-sm btn-outline-secondary">Detalhes</a>
+              {% if orcamento.can_editar %}
+                <a href="{{ url_for('editar_orcamento', budget_id=orcamento.id_orcamento) }}" class="btn btn-sm btn-outline-primary">Editar</a>
+              {% else %}
+                <button class="btn btn-sm btn-outline-primary" disabled title="Orçamento concluído.">Editar</button>
+              {% endif %}
+              {% if orcamento.can_efetivar %}
+                <a href="{{ url_for('efetivar_orcamento', budget_id=orcamento.id_orcamento) }}" class="btn btn-sm btn-success">Efetivar</a>
+              {% else %}
+                <button class="btn btn-sm btn-success" disabled title="Orçamento já concluído.">Efetivar</button>
+              {% endif %}
+              {% if orcamento.can_reprovar %}
+                <form action="{{ url_for('reprovar_orcamento', budget_id=orcamento.id_orcamento) }}" method="post">
+                  <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Confirmar reprovação?')">Reprovar</button>
+                </form>
+              {% else %}
+                <button class="btn btn-sm btn-danger" disabled title="Orçamento concluído.">Reprovar</button>
+              {% endif %}
+            </div>
           </td>
         </tr>
       {% else %}
